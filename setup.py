@@ -15,7 +15,7 @@ with open('requirements.txt', 'r') as f:
 
 print("Started pySuStaIn setup.py")
 
-setup(name=               'pySuStaIn',
+setup(name=               'sSuStaIn',
       version=            __version__,
       description=        'Python implementation of the SuStaIn algorithm',
       url=                'https://github.com/ucl-pond/pySuStaIn',
@@ -26,10 +26,10 @@ setup(name=               'pySuStaIn',
       maintainer=         'Leon Aksman',
       maintainer_email=   'l.aksman@ucl.ac.uk',
       license=		        'TBC',
-      packages=			      ['pySuStaIn', 'sim'],
+      packages=			      ['sSuStaIn', 'sim'],
       python_requires=  	'>=3.7',
       install_requires =  install_reqs,	#the parsed requirements from requirements.txt
       entry_points=			  {},
       zip_safe=				    False)
 
-print("Finished pySuStaIn setup.py")
+print("Finished sSuStaIn setup.py")

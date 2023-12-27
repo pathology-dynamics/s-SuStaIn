@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0, '/home/rtandon32/ebm/pySuStaIn/sim/')
+sys.path.insert(0, '/Users/raghavtandon/Documents/PhD/ebm/s-SuStaIn/sim')
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -18,10 +18,10 @@ from kde_ebm import plotting
 import warnings
 #warnings.filterwarnings("ignore",category=cbook.mplDeprecation)
 
-from pySuStaIn.sEBMSustain import sEBMSustainData
-from pySuStaIn.sEBMSustain import sEBMSustain
-from pySuStaIn.ZscoreSustain  import ZscoreSustain
-from pySuStaIn.MixtureSustain import MixtureSustain
+# from pySuStaIn.sEBMSustain import sEBMSustainData
+from sSuStaIn.sEBMSustain import sEBMSustain
+# from pySuStaIn.ZscoreSustain  import ZscoreSustain
+# from pySuStaIn.MixtureSustain import MixtureSustain
 
 import sklearn.model_selection
 
@@ -131,7 +131,7 @@ print("ll", c)
 # print(tt)
 # print(type(tt))
 
-a, b, c, d, e, f = sustain._perform_mcmc(sustain._sEBMSustain__sustainData, a, b, 100000, 1, 0.01)
+a, b, c, d, e, f = sustain._perform_mcmc(sustain._sEBMSustain__sustainData, a, b, 200000, 1, 0.01)
 print("MCMC seq", a)
 print("MCMC f", b)
 print("MCMC ll", c)
