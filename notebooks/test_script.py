@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0, '/Users/raghavtandon/Documents/PhD/ebm/s-SuStaIn/sim')
+sys.path.insert(0, '/home2/rtandon32/ebm/s-SuStaIn/sim')
 
 import numpy as np
 from matplotlib import pyplot as plt
