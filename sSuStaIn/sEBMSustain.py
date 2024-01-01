@@ -40,15 +40,13 @@ from sSuStaIn.AbstractSustain import AbstractSustain
 #The data structure class for MixtureSustain. It holds the positive/negative likelihoods that get passed around and re-indexed in places.
 class sEBMSustainData(AbstractSustainData):
 
-    def __init__(self, L_yes, L_no, stage_size):
+    def __init__(self, L_yes, L_no, n_stages):
 
-        assert(L_yes.shape[0] == L_no.shape[0] and L_yes.shape[1] == L_no.shape[1] and sum(stage_size) == L_yes.shape[1])
+        assert(L_yes.shape[0] == L_no.shape[0] and L_yes.shape[1] == L_no.shape[1])
 
         self.L_yes          = L_yes
         self.L_no           = L_no
-        self.stage_size = stage_size
-        numStages = len(stage_size)
-        self.__numStages = numStages
+        self.n_stages       = n_stages
 
     def getNumSamples(self):
         return self.L_yes.shape[0]
@@ -57,10 +55,10 @@ class sEBMSustainData(AbstractSustainData):
         return self.L_no.shape[1]
 
     def getNumStages(self):
-        return self.__numStages
+        return self.n_stages
 
     def reindex(self, index):
-        return sEBMSustainData(self.L_yes[index,], self.L_no[index,], self.stage_size)
+        return sEBMSustainData(self.L_yes[index,], self.L_no[index,], self.n_stages)
 
 #*******************************************
 #An implementation of the AbstractSustain class with mixture model based events
@@ -69,7 +67,10 @@ class sEBMSustain(AbstractSustain):
     def __init__(self,
                  L_yes,
                  L_no,
-                 stage_size,
+                 n_stages, 
+                 stage_size_init, 
+                 min_stage_size,
+                 p_absorb,
                  biomarker_labels,
                  N_startpoints,
                  N_S_max,
@@ -97,10 +98,15 @@ class sEBMSustain(AbstractSustain):
         assert (len(biomarker_labels) == N), "number of labels should match number of biomarkers"
 
         self.biomarker_labels           = biomarker_labels
+        self.n_stages                   = n_stages
+        self.__sustainData              = sEBMSustainData(L_yes, L_no, self.n_stages)
+        self.stage_size_init            = stage_size_init
+        self.min_stage_size             = min_stage_size
+        self.p_absorb                   = p_absorb
+        assert self.n_stages == len(stage_size_init), "number of stages should match with the number of elements in stage_size_init"
+        assert min(self.stage_size_init) >= self.min_stage_size, "no stage should have fewer biomarkers than what are required by min_stage_size"
+        assert self.p_absorb < 1 and self.p_absorb >= 0, "the probability should be less than 1, but can include 0"
 
-        numStages                       = len(stage_size)    #number of stages == number of biomarkers here
-        self.__sustainData              = sEBMSustainData(L_yes, L_no, stage_size)
-        self.stage_size                 = stage_size
 
         super().__init__(self.__sustainData,
                          N_startpoints,
@@ -115,9 +121,16 @@ class sEBMSustain(AbstractSustain):
         # Randomly initialises a sequence
 
         S = rng.permutation(sustainData.getNumBiomarkers()).astype(int)
-        S_init = [self._dictionarize_sequence(S)]
+        S_init = [self._dictionarize_sequence(S, self.stage_size_init)]
         return S_init
     
+    def _get_shape(self, S_dict):
+        assert type(S_dict) == dict
+        N_stages = len(S_dict)
+        assert N_stages == self.n_stages, "Number of stages should remain the same"
+        shape = [len(S_dict[_]) for _ in range(N_stages)]
+        assert min(shape) >= self.min_stage_size, "Each stage should have biomarkers greater than or equal to the minimum size"
+        return shape
     
     # def _dictionarize_sequence(self, S):
     #     # S is array
@@ -134,15 +147,12 @@ class sEBMSustain(AbstractSustain):
     #         S_dict[_] = stage
     #     return S_dict
 
-    def _dictionarize_sequence(self, S):
-        stage_size = self.stage_size
-        stages_cumsum = np.cumsum(stage_size)
+    def _dictionarize_sequence(self, S, stage_size):
+        # stage_size = self.stage_size
+        stages_cumsum = np.cumsum(stage_size, dtype=int)
         S_dict = {}
 
         for _ in range(len(stage_size)-1,0,-1):
-            # if _ == 0:
-            #     idx = (0, stages_cumsum[_])
-            # else:
             idx = (stages_cumsum[_-1], stages_cumsum[_])
             stage = S[idx[0]: idx[1]]
             S_dict[_] = stage
@@ -163,10 +173,11 @@ class sEBMSustain(AbstractSustain):
             flatten_S.append(S_dict[k])
         return np.hstack(flatten_S)
 
-    def _calculate_likelihood_stage(self, sustainData, S):
+    def _calculate_likelihood_stage(self, sustainData, S, stage_size):
         '''
         S - Should be a dictionary
         Computes the likelihood of a single event based model
+        stage_size - gives the shape of S (number of biomarkers in each cluster)
 
         Inputs:
         =======
@@ -187,8 +198,9 @@ class sEBMSustain(AbstractSustain):
         N = sustainData.getNumStages()
         N_b = sustainData.getNumBiomarkers()
         S = self._flatten_S_dict(S) # Flatten the dictionary form of S
-        ss = sustainData.stage_size
-        assert len(ss) == N
+        ss = stage_size
+        assert len(ss) == N, "the number of biomarker clusters should match the number of stages"
+        assert sum(ss) == N_b, "sum of cluster sizes should be equal to total number of biomarkers"
         sample_idx = np.cumsum(ss[:-1])
         S_int = S.astype(int)
         arange_Np1 = np.arange(0, N+1) # redundant (leaving due to legacy)
@@ -215,7 +227,7 @@ class sEBMSustain(AbstractSustain):
         N_S                                 = len(S_init)
         N                                   = sustainData.getNumStages()
         N_b                                 = sustainData.getNumBiomarkers()
-        ss                                  = self.stage_size
+        # ss                                  = self.stage_size_init
 
         S_opt                               = S_init.copy()  # have to copy or changes will be passed to S_init
         f_opt                               = np.array(f_init).reshape(N_S, 1, 1)
@@ -224,7 +236,8 @@ class sEBMSustain(AbstractSustain):
         p_perm_k                            = np.zeros((M, N + 1, N_S))
 
         for s in range(N_S):
-            p_perm_k[:, :, s]               = self._calculate_likelihood_stage(sustainData, S_opt[s])
+            shape_S = self._get_shape(S_opt[s])
+            p_perm_k[:, :, s]               = self._calculate_likelihood_stage(sustainData, S_opt[s], shape_S)
 
         p_perm_k_weighted                   = p_perm_k * f_val_mat
         # the second summation axis is different to Matlab version
@@ -242,21 +255,24 @@ class sEBMSustain(AbstractSustain):
             order_bio                       = rng.permutation(N_b) #np.random.permutation(N)  # this will produce different random numbers to Matlab
             for i in order_bio:
                 current_sequence            = S_opt[s]
+                current_shape               = self._get_shape(current_sequence)
                 current_sequence_flatten = self._flatten_S_dict(current_sequence)
                 assert(current_sequence_flatten.shape[0]==N_b)
                 current_location            = np.array([0] * N_b)
                 # print("CURRENT SEQ", current_sequence)
-                current_location[current_sequence_flatten.astype(int)] = [loc_i for loc_i, size in enumerate(ss) for _ in range(size)]
+                current_location[current_sequence_flatten.astype(int)] = [loc_i for loc_i, size in enumerate(current_shape) for _ in range(size)]
 
                 possible_positions          = np.arange(N)
                 possible_sequences          = np.zeros((len(possible_positions), N_b, rep))
                 possible_likelihood         = np.zeros((len(possible_positions), rep))
+                possible_shapes             = np.zeros((N, self.n_stages, rep))
                 possible_p_perm_k           = np.zeros((M, N + 1, len(possible_positions), rep))
                 for index in range(len(possible_positions)):
                     for r in range(rep):
                         selected_event = i
                         move_event_from = current_location[selected_event]
                         new_sequence = S_opt[s].copy()
+                        stage_shape = current_shape.copy()
 
                         #choose a position in the sequence to move an event to
                         move_event_to           = possible_positions[index]
@@ -270,19 +286,31 @@ class sEBMSustain(AbstractSustain):
                         
                         if step != 0:
                             # print("ns1", new_sequence)
+                            if new_sequence[move_event_from].shape[0] > self.min_stage_size:
+                                expand_stage = rng.binomial(1, self.p_absorb)
+                            else:
+                                expand_stage = 0
+
                             new_sequence[move_event_from] = np.delete(new_sequence[move_event_from], 
                                                                     np.where(new_sequence[move_event_from] == selected_event))
-                            for _ in range(move_event_to, move_event_from, step):
-                                start_cluster = new_sequence[_]
-                                rng.shuffle(start_cluster)
-                                shift_event = start_cluster[0]
-                                new_sequence[_] = np.delete(np.append(start_cluster, selected_event), 0)
-                                selected_event = shift_event
-                            new_sequence[_+step] = np.append(new_sequence[_+step], selected_event)
-                            # print(new_sequence, s, i, index, r)
+                            
+
+                            if not expand_stage:
+                                for _ in range(move_event_to, move_event_from, step):
+                                    start_cluster = new_sequence[_]
+                                    rng.shuffle(start_cluster)
+                                    shift_event = start_cluster[0]
+                                    new_sequence[_] = np.delete(np.append(start_cluster, selected_event), 0)
+                                    selected_event = shift_event
+                                new_sequence[_+step] = np.append(new_sequence[_+step], selected_event)
+                            else:
+                                new_sequence[move_event_to] = np.append(new_sequence[move_event_to], selected_event)
+                                stage_shape[move_event_from] -= 1
+                                stage_shape[move_event_to] += 1
+                        possible_shapes[index,:,r] = stage_shape
                         ns_flatten = self._flatten_S_dict(new_sequence)
                         possible_sequences[index,:,r] = ns_flatten
-                        possible_p_perm_k[:,:,index,r] = self._calculate_likelihood_stage(sustainData, new_sequence)
+                        possible_p_perm_k[:,:,index,r] = self._calculate_likelihood_stage(sustainData, new_sequence, stage_shape)
                         p_perm_k[:,:,s] = possible_p_perm_k[:, :, index, r]
                         total_prob_stage        = np.sum(p_perm_k * f_val_mat, 2)
                         total_prob_subj         = np.sum(total_prob_stage, 1)
@@ -291,10 +319,11 @@ class sEBMSustain(AbstractSustain):
                 idx_max, r_max = np.unravel_index(np.argmax(possible_likelihood, axis=None), possible_likelihood.shape)
                 max_likelihood = possible_likelihood[idx_max, r_max]
                 this_S = possible_sequences[idx_max, :, r_max].astype(int)
-                S_opt[s] = self._dictionarize_sequence(this_S)
+                shape_S = possible_shapes[idx_max, :, r_max]
+                S_opt[s] = self._dictionarize_sequence(this_S, shape_S)
                 p_perm_k[:,:,s] = possible_p_perm_k[:,:,idx_max, r_max]
             
-            S_opt[s] = self._dictionarize_sequence(this_S)
+            S_opt[s] = self._dictionarize_sequence(this_S, shape_S)
 
         p_perm_k_weighted                   = p_perm_k * f_val_mat
         p_perm_k_norm                       = p_perm_k_weighted / np.tile(np.sum(np.sum(p_perm_k_weighted, 1), 1).reshape(M, 1, 1), (1, N + 1, N_S))  # the second summation axis is different to Matlab version
@@ -798,7 +827,8 @@ class sEBMSustain(AbstractSustain):
                 ml_likelihood_EM,   \
                 ml_sequence_mat_EM, \
                 ml_f_mat_EM,        \
-                ml_likelihood_mat_EM        = self._estimate_ml_sustain_model_nplus1_clusters(self.__sustainData, ml_sequence_prev_EM, ml_f_prev_EM) #self.__estimate_ml_sustain_model_nplus1_clusters(self.__data, ml_sequence_prev_EM, ml_f_prev_EM)
+                ml_likelihood_mat_EM        = self._estimate_ml_sustain_model_nplus1_clusters(self.__sustainData, ml_sequence_prev_EM, 
+                                                                                              ml_f_prev_EM) #self.__estimate_ml_sustain_model_nplus1_clusters(self.__data, ml_sequence_prev_EM, ml_f_prev_EM)
 
                 seq_init                    = ml_sequence_EM
                 f_init                      = ml_f_EM

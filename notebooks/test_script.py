@@ -27,10 +27,10 @@ import sklearn.model_selection
 
 import pylab
 
-N                       = 10         # number of biomarkers
+N                       = 25         # number of biomarkers
 M                       = 200       # number of observations ( e.g. subjects )
 N_S_ground_truth        = 3         # number of ground truth subtypes
-stage_sizes = [2,3,3,2]
+stage_sizes = [5,5,5,5,5]
 # the fractions of the total number of subjects (M) belonging to each subtype
 ground_truth_fractions = np.array([0.5, 0.30, 0.20])
 
@@ -104,19 +104,22 @@ for i in range(N):
     elif sustainType   == "mixture_KDE":
         L_no[:, i], L_yes[:, i] = mixtures[i].pdf(data[:, i].reshape(-1, 1))
 
-sustain = sEBMSustain(L_yes, L_no, stage_sizes, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
+sustain = sEBMSustain(L_yes, L_no, 5, stage_sizes, 2, 0.2, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
 
 rng = np.random.default_rng(0)
 seq_init = sustain._initialise_sequence(sustain._sEBMSustain__sustainData, rng)
 flattened = sustain._flatten_S_dict(seq_init[0])
 print("flattened seq init", flattened)
 
-seq_gt1 = {0: np.array([1,4]), 1: np.array([5,7,2]), 2: np.array([9,0,8]), 3: np.array([6,3])}
-seq_gt2 = {0: np.array([7,9]), 1: np.array([5,6,1]), 2: np.array([4,0,3]), 3: np.array([2,8])}
+seq1 = rng.permutation(N)
+seq2 = rng.permutation(N)
+seq_gt1 = {0: seq1[:5], 1: seq1[5:10], 2: seq1[10:15], 3: seq1[15:20], 4:seq1[20:]}
+seq_gt2 = {0: seq2[:5], 1: seq2[5:10], 2: seq2[10:15], 3: seq2[15:20], 4:seq2[20:]}
+# seq_gt2 = {0: np.array([7,9]), 1: np.array([5,6,1]), 2: np.array([4,0,3]), 3: np.array([2,8])}
 
-a, b, c, _, _, _ = sustain._perform_em(sustain._sEBMSustain__sustainData, [seq_gt1, seq_gt2], [0.2,0.8], rng)
-# print("a", a)
-# print("b", b)
+a, b, c, _, _, _,_ = sustain._perform_em(sustain._sEBMSustain__sustainData, [seq_gt1, seq_gt2], [0.2,0.8], rng)
+print("a", a)
+print("b", b)
 print("ground truth sequences", ground_truth_sequences)
 print("ground truth fractions", ground_truth_fractions)
 a, b, c, d, e, f = sustain._estimate_ml_sustain_model_nplus1_clusters(sustain._sEBMSustain__sustainData, a, b)
@@ -131,7 +134,7 @@ print("ll", c)
 # print(tt)
 # print(type(tt))
 
-a, b, c, d, e, f = sustain._perform_mcmc(sustain._sEBMSustain__sustainData, a, b, 200000, 1, 0.01)
-print("MCMC seq", a)
-print("MCMC f", b)
-print("MCMC ll", c)
+# a, b, c, d, e, f = sustain._perform_mcmc(sustain._sEBMSustain__sustainData, a, b, 200000, 1, 0.01)
+# print("MCMC seq", a)
+# print("MCMC f", b)
+# print("MCMC ll", c)

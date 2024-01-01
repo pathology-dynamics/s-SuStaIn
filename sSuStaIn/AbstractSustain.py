@@ -751,7 +751,8 @@ class AbstractSustain(ABC):
         this_ml_likelihood, \
         _,                  \
         _,                  \
-        _                               = self._perform_em(sustainData, seq_init, f_init, rng)
+        _,                  \
+        _                        = self._perform_em(sustainData, seq_init, f_init, rng)
 
         return this_ml_sequence, this_ml_f, this_ml_likelihood
 
@@ -822,7 +823,7 @@ class AbstractSustain(ABC):
             temp_sustainData                = sustainData.reindex(index_s)
 
             temp_seq_init                   = self._initialise_sequence(sustainData, rng)
-            seq_init_split, _, _, _, _, _   = self._perform_em(temp_sustainData, temp_seq_init, [1], rng)
+            seq_init_split, _, _, _, _, _, _   = self._perform_em(temp_sustainData, temp_seq_init, [1], rng)
             seq_init.append(seq_init_split[0])
 
         f_init                              = np.array([1.] * N_S) / float(N_S)
@@ -830,7 +831,7 @@ class AbstractSustain(ABC):
         # optimise the mixture of two models from the initialisation
         this_ml_sequence, \
         this_ml_f, \
-        this_ml_likelihood, _, _, _         = self._perform_em(sustainData, seq_init, f_init, rng)
+        this_ml_likelihood, _, _, _, _         = self._perform_em(sustainData, seq_init, f_init, rng)
 
         return this_ml_sequence, this_ml_f, this_ml_likelihood
 
@@ -884,9 +885,9 @@ class AbstractSustain(ABC):
         ml_likelihood,      \
         samples_sequence,   \
         samples_f,          \
-        samples_likelihood                  = self._perform_em(sustainData, seq_init, f_init, rng)
+        samples_likelihood, samples_shapes                  = self._perform_em(sustainData, seq_init, f_init, rng)
 
-        return ml_sequence, ml_f, ml_likelihood, samples_sequence, samples_f, samples_likelihood
+        return ml_sequence, ml_f, ml_likelihood, samples_sequence, samples_f, samples_likelihood, samples_shapes
     #********************************************
 
     def _perform_em(self, sustainData, current_sequence, current_f, rng):
@@ -904,12 +905,15 @@ class AbstractSustain(ABC):
         samples_sequence                    = np.nan * np.ones((MaxIter, N_b, N_S))
         samples_f                           = np.nan * np.ones((MaxIter, N_S))
         samples_likelihood                  = np.nan * np.ones((MaxIter, 1))
-
+        samples_stage_size                  = np.nan * np.ones((MaxIter, self.n_stages, N_S))
+        shapes_init                         = np.vstack([self._get_shape(current_s) for current_s in current_sequence])
+        assert shapes_init.shape[1] == self.n_stages
         current_sequence_array = np.vstack([self._flatten_S_dict(S_dict) for S_dict in current_sequence])
         samples_sequence[0, :, :] = current_sequence_array.T
         current_f                           = np.array(current_f).reshape(len(current_f))
         samples_f[0, :]                     = current_f
         samples_likelihood[0]               = current_likelihood
+        samples_stage_size[0,:,:]           = shapes_init.T
         # print("current_sequence", current_sequence)
         while terminate == 0:
 
@@ -928,9 +932,11 @@ class AbstractSustain(ABC):
                     current_likelihood      = candidate_likelihood
 
             current_sequence_array = np.vstack([self._flatten_S_dict(S_dict) for S_dict in current_sequence])
+            current_sequence_shape = np.vstack([self._get_shape(S_dict) for S_dict in current_sequence])
             samples_sequence[iteration, :, :] = current_sequence_array.T
             samples_f[iteration, :]         = current_f
             samples_likelihood[iteration]   = current_likelihood
+            samples_stage_size[iteration,:,:] = current_sequence_shape.T
 
             if iteration == (MaxIter - 1):
                 terminate                   = 1
@@ -939,7 +945,7 @@ class AbstractSustain(ABC):
         ml_sequence                         = current_sequence
         ml_f                                = current_f
         ml_likelihood                       = current_likelihood
-        return ml_sequence, ml_f, ml_likelihood, samples_sequence, samples_f, samples_likelihood
+        return ml_sequence, ml_f, ml_likelihood, samples_sequence, samples_f, samples_likelihood, samples_stage_size
 
     def _calculate_likelihood(self, sustainData, S, f):
         # Computes the likelihood of a mixture of models
@@ -955,8 +961,8 @@ class AbstractSustain(ABC):
         M                                   = sustainData.getNumSamples()  #data_local.shape[0]
         N_S                                 = len(S)
         N                                   = sustainData.getNumStages()    #self.stage_zscore.shape[1]
-        ss = sustainData.stage_size
-        sample_idx = np.cumsum(ss[:-1])
+        # ss = sustainData.stage_size
+        # sample_idx = np.cumsum(ss[:-1])
 
         f                                   = np.array(f).reshape(N_S, 1, 1)
         f_val_mat                           = np.tile(f, (1, N + 1, M))
@@ -965,7 +971,8 @@ class AbstractSustain(ABC):
         p_perm_k                            = np.zeros((M, N + 1, N_S))
 
         for s in range(N_S):
-            p_perm_k[:, :, s]               = self._calculate_likelihood_stage(sustainData, S[s])  #self.__calculate_likelihood_stage_linearzscoremodel_approx(data_local, S[s])
+            shape_S = self._get_shape(S[s])
+            p_perm_k[:, :, s]               = self._calculate_likelihood_stage(sustainData, S[s], shape_S)  #self.__calculate_likelihood_stage_linearzscoremodel_approx(data_local, S[s])
 
 
         total_prob_cluster                  = np.squeeze(np.sum(p_perm_k * f_val_mat, 1))
