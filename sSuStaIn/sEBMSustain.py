@@ -197,8 +197,9 @@ class sEBMSustain(AbstractSustain):
         M = sustainData.getNumSamples()
         N = sustainData.getNumStages()
         N_b = sustainData.getNumBiomarkers()
+        ss = self._get_shape(S)
+        assert ss == stage_size, "passed stage shape should correspond to the dictionary shape"
         S = self._flatten_S_dict(S) # Flatten the dictionary form of S
-        ss = stage_size
         assert len(ss) == N, "the number of biomarker clusters should match the number of stages"
         assert sum(ss) == N_b, "sum of cluster sizes should be equal to total number of biomarkers"
         sample_idx = np.cumsum(ss[:-1])
@@ -347,13 +348,17 @@ class sEBMSustain(AbstractSustain):
         N                                   = sustainData.getNumStages()
         N_b                                 = sustainData.getNumBiomarkers()
         N_S                                 = len(seq_init)
-        ss = self.stage_size
-        ss_cumsum = np.cumsum(ss)
-        stage_idx = {}
-        init_idx = 0
-        for stage, size in enumerate(ss_cumsum):
-            stage_idx[stage] = np.arange(init_idx, size)
-            init_idx = size
+        shape_S                             = np.vstack([self._get_shape(s) for s in seq_init])
+        # ss = self.stage_size
+        ss_cumsum = np.cumsum(shape_S, axis=1)
+        stage_idx = []
+        for _ in ss_cumsum:
+            stage_idx_ = {}
+            init_idx = 0
+            for stage, size in enumerate(_):
+                stage_idx_[stage] = np.arange(init_idx, size)
+                init_idx = size
+            stage_idx.append(stage_idx_)
 
 
         seq_init_flatten                    = self._flatten_sequence(seq_init) 
@@ -365,7 +370,7 @@ class sEBMSustain(AbstractSustain):
         samples_likelihood                  = np.zeros((n_iterations, 1))
         samples_sequence[:, :, 0]           = seq_init_flatten  # don't need to copy as we don't write to 0 index
         samples_f[:, 0]                     = f_init
-        sample_prob                         = np.array(ss)/sum(ss)
+        sample_prob                         = shape_S / shape_S.sum(axis=1).reshape(-1,1)
 
         # Reduce frequency of tqdm update to 0.1% of total for larger iteration numbers
         tqdm_update_iters = int(n_iterations/1000) if n_iterations > 100000 else None 
@@ -376,8 +381,9 @@ class sEBMSustain(AbstractSustain):
                 # this function returns different random numbers to Matlab
 
                 # Abstract out seq_order loop
-                move_event_from_stage = np.random.choice(np.arange(N).astype(int), N_S, p=sample_prob, replace=True)
-                move_event_from_idx = [np.random.choice(stage_idx[_], 1)[0] for _ in move_event_from_stage]
+                # move_event_from_stage = np.random.choice(np.arange(N).astype(int), N_S, p=sample_prob, replace=True)
+                move_event_from_stage = np.array([np.random.choice(np.arange(N).astype(int), 1, p=s)[0] for s in sample_prob])
+                move_event_from_idx = np.array([np.random.choice(stage_idx[i][j], 1)[0] for i, j in enumerate(move_event_from_stage)])
 
                 # move_event_from = np.ceil(N * self.global_rng.random(N_S)).astype(int) - 1
                 current_sequence = samples_sequence[:, :, i - 1]
@@ -392,7 +398,7 @@ class sEBMSustain(AbstractSustain):
                 weight = np.divide(weight, weight.sum(1)[:, None])
 
                 index = [self.global_rng.choice(np.arange(N), 1, replace=True, p=row)[0] for row in weight]
-                move_event_to_idx = [np.random.choice(stage_idx[_], 1)[0] for _ in index]
+                move_event_to_idx = [np.random.choice(stage_idx[i][j], 1)[0] for i, j in enumerate(index)]
 
                 # move_event_to = np.arange(N)[index]
 
@@ -419,8 +425,8 @@ class sEBMSustain(AbstractSustain):
 
             p_perm_k                        = np.zeros((M, N+1, N_S))
             for s in range(N_S):
-                S_dict = self._dictionarize_sequence(S[s,:])
-                p_perm_k[:,:,s]             = self._calculate_likelihood_stage(sustainData, S_dict)
+                S_dict = self._dictionarize_sequence(S[s,:], shape_S[s])
+                p_perm_k[:,:,s]             = self._calculate_likelihood_stage(sustainData, S_dict, shape_S[s].tolist())
 
 
             #NOTE: added extra axes to get np.tile to work the same as Matlab's repmat in this 3D tiling

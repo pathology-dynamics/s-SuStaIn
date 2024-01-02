@@ -32,7 +32,7 @@ M                       = 200       # number of observations ( e.g. subjects )
 N_S_ground_truth        = 3         # number of ground truth subtypes
 stage_sizes = [5,5,5,5,5]
 # the fractions of the total number of subjects (M) belonging to each subtype
-ground_truth_fractions = np.array([0.5, 0.30, 0.20])
+ground_truth_fractions = np.array([0.6, 0.30, 0.10])
 
 #create some generic biomarker names
 BiomarkerNames           = ['Biomarker ' + str(i) for i in range(N)]
@@ -104,7 +104,7 @@ for i in range(N):
     elif sustainType   == "mixture_KDE":
         L_no[:, i], L_yes[:, i] = mixtures[i].pdf(data[:, i].reshape(-1, 1))
 
-sustain = sEBMSustain(L_yes, L_no, 5, stage_sizes, 2, 0.2, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
+sustain = sEBMSustain(L_yes, L_no, 5, stage_sizes, 2, 0.0, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
 
 rng = np.random.default_rng(0)
 seq_init = sustain._initialise_sequence(sustain._sEBMSustain__sustainData, rng)
@@ -134,7 +134,7 @@ print("ll", c)
 # print(tt)
 # print(type(tt))
 
-# a, b, c, d, e, f = sustain._perform_mcmc(sustain._sEBMSustain__sustainData, a, b, 200000, 1, 0.01)
-# print("MCMC seq", a)
-# print("MCMC f", b)
-# print("MCMC ll", c)
+a, b, c, d, e, f = sustain._perform_mcmc(sustain._sEBMSustain__sustainData, a, b, 200000, 1, 0.01)
+print("MCMC seq", a)
+print("MCMC f", b)
+print("MCMC ll", c)
