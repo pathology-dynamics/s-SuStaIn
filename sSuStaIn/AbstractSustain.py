@@ -524,7 +524,7 @@ class AbstractSustain(ABC):
 
         #return samples_sequence_cval, samples_f_cval, kendalls_tau_mat, f_mat #samples_sequence_cval
 
-    def subtype_and_stage_individuals(self, sustainData, samples_sequence, samples_f, N_samples):
+    def subtype_and_stage_individuals(self, sustainData, shape_seq, samples_sequence, samples_f, N_samples):
         # Subtype and stage a set of subjects. Useful for subtyping/staging subjects that were not used to build the model
 
         nSamples                            = sustainData.getNumSamples()  #data_local.shape[0]
@@ -535,6 +535,8 @@ class AbstractSustain(ABC):
         N_S                                 = samples_sequence.shape[0]
         temp_mean_f                         = np.mean(samples_f, axis=1)
         ix                                  = np.argsort(temp_mean_f)[::-1]
+        assert shape_seq.shape == (N_S, nStages), "Shape array should correspond to number of subtypes (rows) and number of stages (cols)"
+        shape_seq                           = shape_seq[ix,:]
 
         prob_subtype_stage                  = np.zeros((nSamples, nStages + 1, N_S))
         prob_subtype                        = np.zeros((nSamples, N_S))
@@ -544,13 +546,17 @@ class AbstractSustain(ABC):
             sample                          = int(select_samples[i])
 
             this_S                          = samples_sequence[ix, :, sample]
+            # for S_idx in range(this_S.shape[0]):
+            #     self._dictionarize_sequence(this_S[S_idx], shape_seq[S_idx])
+            
+            this_S_dict                     = [self._dictionarize_sequence(this_S[i_], S_) for i_, S_ in enumerate(shape_seq)]
             this_f                          = samples_f[ix, sample]
 
             _,                  \
             _,                  \
             total_prob_stage,   \
             total_prob_subtype, \
-            total_prob_subtype_stage        = self._calculate_likelihood(sustainData, this_S, this_f)
+            total_prob_subtype_stage        = self._calculate_likelihood(sustainData, this_S_dict, this_f)
 
             total_prob_subtype              = total_prob_subtype.reshape(len(total_prob_subtype), N_S)
             total_prob_subtype_norm         = total_prob_subtype        / np.tile(np.sum(total_prob_subtype, 1).reshape(len(total_prob_subtype), 1),        (1, N_S))
@@ -1019,7 +1025,8 @@ class AbstractSustain(ABC):
         seq_sigma_currentpass               = 1
         f_sigma_currentpass                 = 0.01  # magic number
 
-        N_S                                 = seq_init.shape[0]
+        N_S                                 = len(seq_init)
+        # N_S                                 = seq_init.shape[0]
 
         for i in range(n_passes_optimisation):
 
@@ -1036,9 +1043,11 @@ class AbstractSustain(ABC):
                     temp_seq                        = samples_sequence_currentpass[s, :, sample]
                     temp_inv                        = np.array([0] * samples_sequence_currentpass.shape[1])
                     temp_inv[temp_seq.astype(int)]  = np.arange(samples_sequence_currentpass.shape[1])
+                    # [loc_i for loc_i, size in enumerate(current_shape) for _ in range(size)]
                     samples_position_currentpass[s, :, sample] = temp_inv
 
             seq_sigma_currentpass           = np.std(samples_position_currentpass, axis=2, ddof=1)  # np.std is different to Matlab std, which normalises to N-1 by default
+            print(seq_sigma_currentpass)
             seq_sigma_currentpass[seq_sigma_currentpass < 0.01] = 0.01  # magic number
 
             f_sigma_currentpass             = np.std(samples_f_currentpass, axis=1, ddof=1)         # np.std is different to Matlab std, which normalises to N-1 by default

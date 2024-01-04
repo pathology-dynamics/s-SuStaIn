@@ -837,6 +837,7 @@ class sEBMSustain(AbstractSustain):
                                                                                               ml_f_prev_EM) #self.__estimate_ml_sustain_model_nplus1_clusters(self.__data, ml_sequence_prev_EM, ml_f_prev_EM)
 
                 seq_init                    = ml_sequence_EM
+                print("SEQ INIT", seq_init)
                 f_init                      = ml_f_EM
 
                 ml_sequence,        \
