@@ -17,6 +17,7 @@
 # Authors:      Peter Wijeratne (p.wijeratne@ucl.ac.uk) and Leon Aksman (leon.aksman@loni.usc.edu)
 # Contributors: Arman Eshaghi (a.eshaghi@ucl.ac.uk), Alex Young (alexandra.young@kcl.ac.uk), Cameron Shand (c.shand@ucl.ac.uk)
 ###
+import pdb
 import os
 from pathlib import Path
 import pickle
@@ -32,6 +33,7 @@ from tqdm.auto import tqdm
 import numpy as np
 import scipy.stats as stats
 from matplotlib import pyplot as plt
+from scipy.special import logsumexp
 
 from sSuStaIn.AbstractSustain import AbstractSustainData
 from sSuStaIn.AbstractSustain import AbstractSustain
@@ -47,6 +49,8 @@ class sEBMSustainData(AbstractSustainData):
         self.L_yes          = L_yes
         self.L_no           = L_no
         self.n_stages       = n_stages
+        self.L_yes_log      = np.log(L_yes)
+        self.L_no_log       = np.log(L_no)
 
     def getNumSamples(self):
         return self.L_yes.shape[0]
@@ -205,20 +209,20 @@ class sEBMSustain(AbstractSustain):
         sample_idx = np.cumsum(ss[:-1])
         S_int = S.astype(int)
         arange_Np1 = np.arange(0, N+1) # redundant (leaving due to legacy)
-        p_perm_k = np.zeros((M, N+1))
+        p_perm_k_log = np.zeros((M, N+1))
 
         #**** THIS VERSION IS ROUGHLY 10x FASTER THAN THE ONE BELOW
-        cp_yes = np.cumprod(sustainData.L_yes[:, S_int], 1)
-        cp_no = np.cumprod(sustainData.L_no[:,  S_int[::-1]],  1)   #do the cumulative product from the end of the sequence
+        cp_yes = np.cumsum(sustainData.L_yes_log[:, S_int], 1)
+        cp_no = np.cumsum(sustainData.L_no_log[:,  S_int[::-1]],  1)   #do the cumulative product from the end of the sequence
 
         # Even faster version to avoid loops
-        p_perm_k[:, 0] = cp_no[:, -1]
-        p_perm_k[:, -1] = cp_yes[:, -1]
-        p_perm_k[:, 1:-1] =  cp_yes[:, :-1][:,sample_idx - 1] * cp_no[:, :-1][:,int(N_b) - sample_idx - 1]
+        p_perm_k_log[:, 0] = cp_no[:, -1]
+        p_perm_k_log[:, -1] = cp_yes[:, -1]
+        p_perm_k_log[:, 1:-1] =  cp_yes[:, :-1][:,sample_idx - 1] + cp_no[:, :-1][:,int(N_b) - sample_idx - 1]
 
-        p_perm_k *= 1 / (N + 1)
+        p_perm_k_log += np.log(1 / (N + 1))
 
-        return p_perm_k
+        return p_perm_k_log
 
 
     def _optimise_parameters(self, sustainData, S_init, f_init, rng):
@@ -234,11 +238,11 @@ class sEBMSustain(AbstractSustain):
         f_opt                               = np.array(f_init).reshape(N_S, 1, 1)
         f_val_mat                           = np.tile(f_opt, (1, N + 1, M))
         f_val_mat                           = np.transpose(f_val_mat, (2, 1, 0))
-        p_perm_k                            = np.zeros((M, N + 1, N_S))
+        p_perm_k_log                        = np.zeros((M, N + 1, N_S))
 
         for s in range(N_S):
             shape_S = self._get_shape(S_opt[s])
-            p_perm_k[:, :, s]               = self._calculate_likelihood_stage(sustainData, S_opt[s], shape_S)
+            p_perm_k_log[:, :, s]               = self._calculate_likelihood_stage(sustainData, S_opt[s], shape_S)
 
         p_perm_k_weighted                   = p_perm_k * f_val_mat
         # the second summation axis is different to Matlab version
@@ -391,14 +395,17 @@ class sEBMSustain(AbstractSustain):
                 selected_event = current_sequence[np.arange(N_S), move_event_from_idx]
 
                 # possible_positions = np.arange(N) + np.zeros((len(seq_order),1))
+                bm_pos = np.zeros((N_S, N_b))
+                for s in range(N_S):
+                    bm_pos[s][current_sequence[s].astype(int)] = [loc_i for loc_i, size in enumerate(shape_S[s]) for _ in range(size)]
 
-                distance = np.arange(N) + np.zeros((N_S, 1)) - move_event_from_stage[:, np.newaxis]
+                distance = bm_pos - move_event_from_stage[:, np.newaxis]
 
                 weight = AbstractSustain.calc_coeff(seq_sigma) * AbstractSustain.calc_exp(distance, 0., seq_sigma)
                 weight = np.divide(weight, weight.sum(1)[:, None])
 
-                index = [self.global_rng.choice(np.arange(N), 1, replace=True, p=row)[0] for row in weight]
-                move_event_to_idx = [np.random.choice(stage_idx[i][j], 1)[0] for i, j in enumerate(index)]
+                move_event_to_idx = [self.global_rng.choice(np.arange(N_b), 1, replace=True, p=row)[0] for row in weight]
+                # move_event_to_idx = [np.random.choice(stage_idx[i][j], 1)[0] for i, j in enumerate(index)]
 
                 # move_event_to = np.arange(N)[index]
 
@@ -463,8 +470,15 @@ class sEBMSustain(AbstractSustain):
 
     # ********************* STATIC METHODS
     @staticmethod
-    def plot_positional_var(samples_sequence, samples_f, n_samples, biomarker_labels=None, ml_f_EM=None, cval=False, subtype_order=None, biomarker_order=None, title_font_size=12, stage_font_size=10, stage_label="Event Position", stage_rot=0, stage_interval=1, label_font_size=10, label_rot=0, cmap="Oranges", biomarker_colours=None, figsize=None, subtype_titles=None, separate_subtypes=False, save_path=None, save_kwargs={}):
+    def plot_positional_var(ml_sequence_EM, samples_sequence, samples_f, n_samples, biomarker_labels=None, ml_f_EM=None, cval=False, subtype_order=None, biomarker_order=None, title_font_size=12, stage_font_size=10, stage_label="Event Position", stage_rot=0, stage_interval=1, label_font_size=10, label_rot=0, cmap="Oranges", biomarker_colours=None, figsize=None, subtype_titles=None, separate_subtypes=False, save_path=None, save_kwargs={}):
         # Get the number of subtypes
+        def _get_shape(S_dict):
+            assert type(S_dict) == dict
+            N_stages = len(S_dict)
+            shape = [len(S_dict[_]) for _ in range(N_stages)]
+            return shape
+        shape_S = np.vstack([_get_shape(_) for _ in ml_sequence_EM])
+        print("shape_S", shape_S)
         N_S = samples_sequence.shape[0]
         # Get the number of features/biomarkers
         N_bio = samples_sequence.shape[1]
@@ -508,13 +522,14 @@ class sEBMSustain(AbstractSustain):
             biomarker_colours = {i:"black" for i in biomarker_labels}
 
         # Flag to plot subtypes separately
+        print("separate subtypes", separate_subtypes)
         if separate_subtypes:
             nrows, ncols = 1, 1
         else:
             # Determine number of rows and columns (rounded up)
             if N_S == 1:
                 nrows, ncols = 1, 1
-            elif N_S < 3:
+            elif N_S < 4:
                 nrows, ncols = 1, N_S
             elif N_S < 7:
                 nrows, ncols = 2, int(np.ceil(N_S / 2))
@@ -530,6 +545,7 @@ class sEBMSustain(AbstractSustain):
         # Container for all figure objects
         figs = []
         # Loop over figures (only makes a diff if separate_subtypes=True)
+        print("subtype_loops", subtype_loops)
         for i in range(subtype_loops):
             # Create the figure and axis for this subtype loop
             fig, axs = plt.subplots(nrows, ncols, figsize=figsize)
@@ -548,7 +564,10 @@ class sEBMSustain(AbstractSustain):
                 if i not in range(N_S):
                     ax.set_axis_off()
                     continue
-
+                print("III", i)
+                this_shape = shape_S[subtype_order[i]]
+                shape_cumsum = np.cumsum(this_shape)
+                shape_cumsum = np.insert(shape_cumsum,0,0)
                 this_samples_sequence = samples_sequence[subtype_order[i],:,:].T
                 N = this_samples_sequence.shape[1]
 
@@ -557,6 +576,13 @@ class sEBMSustain(AbstractSustain):
                 # Sum each time it was observed at that point in the sequence
                 # And normalize for number of samples/sequences
                 confus_matrix = (this_samples_sequence==np.arange(N)[:, None, None]).sum(1) / this_samples_sequence.shape[0]
+                confus_matrix_cluster = np.zeros((confus_matrix.shape[0], len(this_shape)))
+                for _ in range(shape_cumsum.shape[0] -1):
+                    confus_matrix_cluster[:,_] = confus_matrix[:,shape_cumsum[_]:shape_cumsum[_+1]].sum(axis=1)
+                print("Confusion Matrix shape", confus_matrix.shape)
+                print(confus_matrix)
+                print("Confusion Matrix cluster")
+                print(confus_matrix_cluster)
 
                 if subtype_titles is not None:
                     title_i = subtype_titles[i]
@@ -569,37 +595,38 @@ class sEBMSustain(AbstractSustain):
                         vals = temp_mean_f[subtype_order]
 
                         if n_samples != np.inf:
-                            title_i = f"Subtype {i+1} (f={vals[i]:.2f}, n={np.round(vals[i] * n_samples):n})"
+                            title_i = f"Subtype {i+1}\n(f={vals[i]:.2f}, n={np.round(vals[i] * n_samples):n})"
                         else:
-                            title_i = f"Subtype {i+1} (f={vals[i]:.2f})"
+                            title_i = f"Subtype {i+1}\n(f={vals[i]:.2f})"
                     else:
-                        title_i = f"Subtype {i+1} cross-validated"
+                        title_i = f"Subtype {i+1}\ncross-validated"
 
                 # Plot the matrix
                 # Manually set vmin/vmax to handle edge cases
                 # and ensure consistent colourization across figures 
                 # when certainty=1
                 ax.imshow(
-                    confus_matrix[biomarker_order, :],
+                    confus_matrix_cluster[biomarker_order, :],
                     interpolation='nearest',
                     cmap=cmap,
                     vmin=0,
-                    vmax=1
+                    vmax=1,
+                    aspect=0.25
                 )
                 # Add the xticks and labels
-                stage_ticks = np.arange(0, N, stage_interval)
+                stage_ticks = np.arange(0, this_shape.shape[0], stage_interval)
                 ax.set_xticks(stage_ticks)
                 ax.set_xticklabels(stage_ticks+1, fontsize=stage_font_size, rotation=stage_rot)
                 # Add the yticks and labels
                 ax.set_yticks(np.arange(N_bio))
                 # Add biomarker labels to LHS of every row
-                if (i % ncols) == 0:
-                    ax.set_yticklabels(biomarker_labels, ha='right', fontsize=label_font_size, rotation=label_rot)
-                    # Set biomarker label colours
-                    for tick_label in ax.get_yticklabels():
-                        tick_label.set_color(biomarker_colours[tick_label.get_text()])
-                else:
-                    ax.set_yticklabels([])
+                # if (i % ncols) == 0:
+                ax.set_yticklabels(biomarker_labels, ha='right', fontsize=label_font_size - 4, rotation=label_rot)
+                # Set biomarker label colours
+                for tick_label in ax.get_yticklabels():
+                    tick_label.set_color(biomarker_colours[tick_label.get_text()])
+                # else:
+                #     ax.set_yticklabels([])
                 # Make the event label slightly bigger than the ticks
                 ax.set_xlabel(stage_label, fontsize=stage_font_size+2)
                 ax.set_title(title_i, fontsize=title_font_size)
@@ -850,6 +877,7 @@ class sEBMSustain(AbstractSustain):
                 ml_f_prev_EM                = ml_f_EM
 
             # max like subtype and stage / subject
+            shape_S = np.vstack([self._get_shape(_) for _ in seq_init])
             N_samples                       = 1000
             ml_subtype,             \
             prob_ml_subtype,        \
@@ -857,7 +885,7 @@ class sEBMSustain(AbstractSustain):
             prob_ml_stage,          \
             prob_subtype,           \
             prob_stage,             \
-            prob_subtype_stage               = self.subtype_and_stage_individuals(self.__sustainData, samples_sequence, samples_f, N_samples)   #self.subtype_and_stage_individuals(self.__data, samples_sequence, samples_f, N_samples)
+            prob_subtype_stage               = self.subtype_and_stage_individuals(self.__sustainData, shape_S, samples_sequence, samples_f, N_samples)   #self.subtype_and_stage_individuals(self.__data, samples_sequence, samples_f, N_samples)
             if not pickle_filepath.exists():
 
                 if not os.path.exists(self.output_folder):
@@ -887,14 +915,19 @@ class sEBMSustain(AbstractSustain):
 
             n_samples                       = self.__sustainData.getNumSamples() #self.__data.shape[0]
 
-            #order of subtypes displayed in positional variance diagrams plotted by _plot_sustain_model
-            self._plot_subtype_order        = np.argsort(ml_f_EM)[::-1]
-            #order of biomarkers in each subtypes' positional variance diagram
-            self._plot_biomarker_order      = ml_sequence_EM[self._plot_subtype_order[0], :].astype(int)
+            if plot:
+                # print("ml_f_EM", ml_f_EM)
+                #order of subtypes displayed in positional variance diagrams plotted by _plot_sustain_model
+                self._plot_subtype_order        = np.argsort(ml_f_EM)[::-1]
+                #order of biomarkers in each subtypes' positional variance diagram
+                # print("ml_sequence_EM", ml_sequence_EM)
+                # print("_plot_subtype_order", self._plot_subtype_order)
+                flatten_S = np.vstack([self._flatten_S_dict(s) for s in ml_sequence_EM])
+                self._plot_biomarker_order      = flatten_S[self._plot_subtype_order[0], :].astype(int)
 
             # plot results
             if plot:
-                figs, ax = self._plot_sustain_model(
+                figs, ax = self._plot_sustain_model(ml_sequence_EM=ml_sequence_EM, 
                     samples_sequence=samples_sequence,
                     samples_f=samples_f,
                     n_samples=n_samples,

@@ -27,15 +27,15 @@ import sklearn.model_selection
 
 import pylab
 
-N                       = 25         # number of biomarkers
-M                       = 200       # number of observations ( e.g. subjects )
+N                       = 45         # number of biomarkers
+M                       = 400       # number of observations ( e.g. subjects )
 N_S_ground_truth        = 3         # number of ground truth subtypes
-stage_sizes = [5,5,5,5,5]
+stage_sizes = [9,9,9,9,9]
 # the fractions of the total number of subjects (M) belonging to each subtype
 ground_truth_fractions = np.array([0.6, 0.30, 0.10])
 
 #create some generic biomarker names
-BiomarkerNames           = ['Biomarker ' + str(i) for i in range(N)]
+BiomarkerNames           = ['BM ' + str(i) for i in range(N)]
 
 #***************** parameters for SuStaIn-based inference of subtypes
 use_parallel_startpoints = True
@@ -43,8 +43,8 @@ use_parallel_startpoints = True
 # number of starting points
 N_startpoints           = 25
 # maximum number of inferred subtypes - note that this could differ from N_S_ground_truth
-N_S_max                 = 2
-N_iterations_MCMC       = int(1e6)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
+N_S_max                 = 3
+N_iterations_MCMC       = int(1e4)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
 
 #labels for plotting are biomarker names
 SuStaInLabels           = BiomarkerNames
@@ -104,9 +104,9 @@ for i in range(N):
     elif sustainType   == "mixture_KDE":
         L_no[:, i], L_yes[:, i] = mixtures[i].pdf(data[:, i].reshape(-1, 1))
 
-sustain = sEBMSustain(L_yes, L_no, 5, stage_sizes, 3, 0.2, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
+sustain = sEBMSustain(L_yes, L_no, 5, stage_sizes, 5, 0.4, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
 
-samples_sequence, samples_f, ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype_stage = sustain.run_sustain_algorithm(plot=False)
+samples_sequence, samples_f, ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype_stage = sustain.run_sustain_algorithm(plot=True)
 print(samples_sequence, samples_f)
 
 # rng = np.random.default_rng(0)
@@ -123,8 +123,8 @@ print(samples_sequence, samples_f)
 # a, b, c, _, _, _,_ = sustain._perform_em(sustain._sEBMSustain__sustainData, [seq_gt1, seq_gt2], [0.2,0.8], rng)
 # print("a", a)
 # print("b", b)
-# print("ground truth sequences", ground_truth_sequences)
-# print("ground truth fractions", ground_truth_fractions)
+print("ground truth sequences", ground_truth_sequences)
+print("ground truth fractions", ground_truth_fractions)
 # a, b, c, d, e, f = sustain._estimate_ml_sustain_model_nplus1_clusters(sustain._sEBMSustain__sustainData, a, b)
 # shape_seq = np.vstack([sustain._get_shape(_) for _ in a])
 # print("shape seq", shape_seq)

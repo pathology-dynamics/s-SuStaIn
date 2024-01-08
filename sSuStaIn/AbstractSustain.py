@@ -18,7 +18,7 @@
 # Contributors: Arman Eshaghi (a.eshaghi@ucl.ac.uk), Alex Young (alexandra.young@kcl.ac.uk), Cameron Shand (c.shand@ucl.ac.uk)
 ###
 from abc import ABC, abstractmethod
-
+import pdb
 from tqdm.auto import tqdm
 import numpy as np
 import scipy.stats as stats
@@ -592,7 +592,7 @@ class AbstractSustain(ABC):
                         prob_ml_subtype[i]  = this_prob_subtype[this_subtype]
                     except:
                         prob_ml_subtype[i]  = this_prob_subtype[this_subtype[0][0]]
-
+            pdb.set_trace()
             this_prob_stage                 = np.squeeze(prob_subtype_stage[i, :, int(ml_subtype[i])])
             
             if (np.sum(np.isnan(this_prob_stage)) == 0):
@@ -1027,6 +1027,9 @@ class AbstractSustain(ABC):
 
         N_S                                 = len(seq_init)
         # N_S                                 = seq_init.shape[0]
+        shape_S = np.vstack([self._get_shape(s) for s in seq_init])
+        assert shape_S.shape == (N_S, self.n_stages)
+        assert all(shape_S.sum(axis=1) == sustainData.getNumBiomarkers())
 
         for i in range(n_passes_optimisation):
 
@@ -1043,11 +1046,12 @@ class AbstractSustain(ABC):
                     temp_seq                        = samples_sequence_currentpass[s, :, sample]
                     temp_inv                        = np.array([0] * samples_sequence_currentpass.shape[1])
                     temp_inv[temp_seq.astype(int)]  = np.arange(samples_sequence_currentpass.shape[1])
+                    temp_inv[temp_seq.astype(int)]  = [loc_i for loc_i, size in enumerate(shape_S[s]) for _ in range(size)]
                     # [loc_i for loc_i, size in enumerate(current_shape) for _ in range(size)]
                     samples_position_currentpass[s, :, sample] = temp_inv
 
             seq_sigma_currentpass           = np.std(samples_position_currentpass, axis=2, ddof=1)  # np.std is different to Matlab std, which normalises to N-1 by default
-            print(seq_sigma_currentpass)
+            print("seq sigma currentpass", seq_sigma_currentpass)
             seq_sigma_currentpass[seq_sigma_currentpass < 0.01] = 0.01  # magic number
 
             f_sigma_currentpass             = np.std(samples_f_currentpass, axis=1, ddof=1)         # np.std is different to Matlab std, which normalises to N-1 by default
@@ -1121,7 +1125,7 @@ class AbstractSustain(ABC):
     # ********************* STATIC METHODS
     @staticmethod
     def calc_coeff(sig):
-        return 1. / np.sqrt(np.pi * 2.0) * sig
+        return 1. / (np.sqrt(np.pi * 2.0) * sig)
 
     @staticmethod
     def calc_exp(x, mu, sig):
