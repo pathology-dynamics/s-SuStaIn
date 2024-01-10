@@ -30,6 +30,7 @@ import csv
 import os
 import multiprocessing
 from functools import partial, partialmethod
+from scipy.special import logsumexp
 
 import time
 import pathos
@@ -554,16 +555,19 @@ class AbstractSustain(ABC):
 
             _,                  \
             _,                  \
-            total_prob_stage,   \
-            total_prob_subtype, \
-            total_prob_subtype_stage        = self._calculate_likelihood(sustainData, this_S_dict, this_f)
+            total_prob_stage_log,   \
+            total_prob_subtype_log, \
+            total_prob_subtype_stage_log        = self._calculate_likelihood(sustainData, this_S_dict, this_f)
 
-            total_prob_subtype              = total_prob_subtype.reshape(len(total_prob_subtype), N_S)
-            total_prob_subtype_norm         = total_prob_subtype        / np.tile(np.sum(total_prob_subtype, 1).reshape(len(total_prob_subtype), 1),        (1, N_S))
-            total_prob_stage_norm           = total_prob_stage          / np.tile(np.sum(total_prob_stage, 1).reshape(len(total_prob_stage), 1),          (1, nStages + 1)) #removed total_prob_subtype
+            total_prob_subtype_log              = total_prob_subtype_log.reshape(len(total_prob_subtype_log), N_S)
+            total_prob_subtype_norm_log         = total_prob_subtype_log     - np.tile(logsumexp(total_prob_subtype_log, axis=1).reshape(len(total_prob_subtype_log), 1),        (1, N_S))
+            total_prob_subtype_norm         = np.exp(total_prob_subtype_norm_log)
+            total_prob_stage_norm_log           = total_prob_stage_log   - np.tile(logsumexp(total_prob_stage_log, axis=1).reshape(len(total_prob_stage_log), 1),          (1, nStages + 1)) #removed total_prob_subtype
+            total_prob_stage_norm       = np.exp(total_prob_stage_norm_log)
 
             #total_prob_subtype_stage_norm   = total_prob_subtype_stage  / np.tile(np.sum(np.sum(total_prob_subtype_stage, 1), 1).reshape(nSamples, 1, 1),   (1, nStages + 1, N_S))
-            total_prob_subtype_stage_norm   = total_prob_subtype_stage / np.tile(np.sum(np.sum(total_prob_subtype_stage, 1, keepdims=True), 2).reshape(nSamples, 1, 1),(1, nStages + 1, N_S))
+            total_prob_subtype_stage_norm_log   = total_prob_subtype_stage_log - np.tile(logsumexp(total_prob_subtype_stage_log, axis=(1,2),keepdims=True).reshape(nSamples, 1, 1),(1, nStages + 1, N_S))
+            total_prob_subtype_stage_norm        = np.exp(total_prob_subtype_stage_norm_log)
 
             prob_subtype_stage              = (i / (i + 1.) * prob_subtype_stage)   + (1. / (i + 1.) * total_prob_subtype_stage_norm)
             prob_subtype                    = (i / (i + 1.) * prob_subtype)         + (1. / (i + 1.) * total_prob_subtype_norm)
@@ -592,7 +596,7 @@ class AbstractSustain(ABC):
                         prob_ml_subtype[i]  = this_prob_subtype[this_subtype]
                     except:
                         prob_ml_subtype[i]  = this_prob_subtype[this_subtype[0][0]]
-            pdb.set_trace()
+            # pdb.set_trace()
             this_prob_stage                 = np.squeeze(prob_subtype_stage[i, :, int(ml_subtype[i])])
             
             if (np.sum(np.isnan(this_prob_stage)) == 0):
@@ -634,11 +638,12 @@ class AbstractSustain(ABC):
         else:
             # If the number of subtypes is greater than 1, go through each subtype
             # in turn and try splitting into two subtypes
-            _, _, _, p_sequence, _          = self._calculate_likelihood(sustainData, ml_sequence_prev, ml_f_prev)
+            _, _, _, p_sequence_log, _          = self._calculate_likelihood(sustainData, ml_sequence_prev, ml_f_prev)
 
             # ml_sequence_prev                = ml_sequence_prev.reshape(ml_sequence_prev.shape[0], ml_sequence_prev.shape[1])
-            p_sequence                      = p_sequence.reshape(p_sequence.shape[0], N_S - 1)
-            p_sequence_norm                 = p_sequence / np.tile(np.sum(p_sequence, 1).reshape(len(p_sequence), 1), (N_S - 1))
+            p_sequence_log                  = p_sequence_log.reshape(p_sequence_log.shape[0], N_S - 1)
+            p_sequence_norm_log                 = p_sequence_log - np.tile(logsumexp(p_sequence_log, axis=1).reshape(len(p_sequence_log), 1), (N_S - 1))
+            p_sequence_norm             = np.exp(p_sequence_norm_log)
 
             # Assign individuals to a subtype (cluster) based on the previous model
             ml_cluster_subj                 = np.zeros((sustainData.getNumSamples(), 1))   #np.zeros((len(data_local), 1))
@@ -974,20 +979,22 @@ class AbstractSustain(ABC):
         f_val_mat                           = np.tile(f, (1, N + 1, M))
         f_val_mat                           = np.transpose(f_val_mat, (2, 1, 0))
 
-        p_perm_k                            = np.zeros((M, N + 1, N_S))
+        p_perm_k_log                            = np.zeros((M, N + 1, N_S))
 
         for s in range(N_S):
             shape_S = self._get_shape(S[s])
-            p_perm_k[:, :, s]               = self._calculate_likelihood_stage(sustainData, S[s], shape_S)  #self.__calculate_likelihood_stage_linearzscoremodel_approx(data_local, S[s])
+            p_perm_k_log[:, :, s]               = self._calculate_likelihood_stage(sustainData, S[s], shape_S)  #self.__calculate_likelihood_stage_linearzscoremodel_approx(data_local, S[s])
 
 
-        total_prob_cluster                  = np.squeeze(np.sum(p_perm_k * f_val_mat, 1))
-        total_prob_stage                    = np.sum(p_perm_k * f_val_mat, 2)
-        total_prob_subj                     = np.sum(total_prob_stage, 1)
+        p_perm_k_weighted_log                   = p_perm_k_log + np.log(f_val_mat)
+        # total_prob_cluster                  = np.squeeze(np.sum(p_perm_k * f_val_mat, 1))
+        total_prob_cluster_log              = logsumexp(p_perm_k_weighted_log, axis=1)
+        total_prob_stage_log                = logsumexp(p_perm_k_weighted_log, axis=2)
+        total_prob_subj_log                 = logsumexp(total_prob_stage_log, axis=1)
 
-        loglike                             = np.sum(np.log(total_prob_subj + 1e-250))
+        loglike                             = np.sum(total_prob_subj_log)
 
-        return loglike, total_prob_subj, total_prob_stage, total_prob_cluster, p_perm_k
+        return loglike, total_prob_subj_log, total_prob_stage_log, total_prob_cluster_log, p_perm_k_log
 
     def _estimate_uncertainty_sustain_model(self, sustainData, seq_init, f_init):
         # Estimate the uncertainty in the subtype progression patterns and

@@ -17,7 +17,7 @@ import numpy.ma as ma
 path = "/home/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/dfMri_D12_ebm_final_n327.csv"
 df = pd.read_csv(path)
 
-k=75
+k=119
 select_cols = [_ for _ in range(k)]
 data = df.iloc[:,select_cols].values
 bm_names = df.columns[select_cols].tolist()
@@ -49,20 +49,20 @@ L_yes = process_L(L_yes)
 
 
 
-stage_sizes = [15,15,15,15,15]
+stage_sizes = [25,25,25,25,19]
 SuStaInLabels = df.columns[select_cols].tolist()
 # number of starting points
 N_startpoints           = 25
 # maximum number of inferred subtypes - note that this could differ from N_S_ground_truth
 N_S_max                 = 3
-N_iterations_MCMC       = int(1e4)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
-dataset_name            = 'sim_tadpole2'
+N_iterations_MCMC       = int(2e5)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
+dataset_name            = 'sim_tadpole4'
 output_folder           = os.path.join(os.getcwd(), dataset_name + '_' + sustainType)
 if not os.path.isdir(output_folder):
     os.mkdir(output_folder)
 use_parallel_startpoints = True
 
-sustain = sEBMSustain(L_yes, L_no, 5, stage_sizes, 10, 0.4, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
+sustain = sEBMSustain(L_yes, L_no, 5, stage_sizes, 15, 0.4, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
 
 samples_sequence, samples_f, ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype_stage = sustain.run_sustain_algorithm(plot=True)
-print(samples_sequence, samples_f)
+# print(samples_sequence, samples_f)

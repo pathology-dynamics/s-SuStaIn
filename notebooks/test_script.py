@@ -44,7 +44,7 @@ use_parallel_startpoints = True
 N_startpoints           = 25
 # maximum number of inferred subtypes - note that this could differ from N_S_ground_truth
 N_S_max                 = 3
-N_iterations_MCMC       = int(1e4)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
+N_iterations_MCMC       = int(1e5)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
 
 #labels for plotting are biomarker names
 SuStaInLabels           = BiomarkerNames

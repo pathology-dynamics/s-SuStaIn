@@ -244,17 +244,17 @@ class sEBMSustain(AbstractSustain):
             shape_S = self._get_shape(S_opt[s])
             p_perm_k_log[:, :, s]               = self._calculate_likelihood_stage(sustainData, S_opt[s], shape_S)
 
-        p_perm_k_weighted                   = p_perm_k * f_val_mat
+        p_perm_k_weighted_log                   = p_perm_k_log + np.log(f_val_mat)
         # the second summation axis is different to Matlab version
         #p_perm_k_norm                       = p_perm_k_weighted / np.tile(np.sum(np.sum(p_perm_k_weighted, 1), 1).reshape(M, 1, 1), (1, N + 1, N_S))
         # adding 1e-250 fixes divide by zero problem that happens rarely
-        p_perm_k_norm                       = p_perm_k_weighted / np.sum(p_perm_k_weighted + 1e-250, axis=(1, 2), keepdims=True)
-
+        p_perm_k_norm_log                       = p_perm_k_weighted_log - logsumexp(p_perm_k_weighted_log, axis=(1, 2), keepdims=True)
+        p_perm_k_norm                           = np.exp(p_perm_k_norm_log)
         f_opt                               = (np.squeeze(sum(sum(p_perm_k_norm))) / sum(sum(sum(p_perm_k_norm)))).reshape(N_S, 1, 1)
         f_val_mat                           = np.tile(f_opt, (1, N + 1, M))
         f_val_mat                           = np.transpose(f_val_mat, (2, 1, 0))
         order_seq                           = rng.permutation(N_S)    #np.random.permutation(N_S)  # this will produce different random numbers to Matlab
-        rep = 5
+        rep = 20
 
         for s in order_seq:
             order_bio                       = rng.permutation(N_b) #np.random.permutation(N)  # this will produce different random numbers to Matlab
@@ -271,7 +271,7 @@ class sEBMSustain(AbstractSustain):
                 possible_sequences          = np.zeros((len(possible_positions), N_b, rep))
                 possible_likelihood         = np.zeros((len(possible_positions), rep))
                 possible_shapes             = np.zeros((N, self.n_stages, rep))
-                possible_p_perm_k           = np.zeros((M, N + 1, len(possible_positions), rep))
+                possible_p_perm_k_log           = np.zeros((M, N + 1, len(possible_positions), rep))
                 for index in range(len(possible_positions)):
                     for r in range(rep):
                         selected_event = i
@@ -315,33 +315,38 @@ class sEBMSustain(AbstractSustain):
                         possible_shapes[index,:,r] = stage_shape
                         ns_flatten = self._flatten_S_dict(new_sequence)
                         possible_sequences[index,:,r] = ns_flatten
-                        possible_p_perm_k[:,:,index,r] = self._calculate_likelihood_stage(sustainData, new_sequence, stage_shape)
-                        p_perm_k[:,:,s] = possible_p_perm_k[:, :, index, r]
-                        total_prob_stage        = np.sum(p_perm_k * f_val_mat, 2)
-                        total_prob_subj         = np.sum(total_prob_stage, 1)
-                        possible_likelihood[index, r] = np.sum(np.log(total_prob_subj + 1e-250))
+                        possible_p_perm_k_log[:,:,index,r] = self._calculate_likelihood_stage(sustainData, new_sequence, stage_shape)
+                        p_perm_k_log[:,:,s] = possible_p_perm_k_log[:, :, index, r]
+                        # total_prob_stage        = np.sum(p_perm_k * f_val_mat, 2)
+                        total_prob_stage_log      = logsumexp(p_perm_k_log + np.log(f_val_mat), axis=2)
+                        total_prob_subj_log       = logsumexp(total_prob_stage_log, 1)
+                        possible_likelihood[index, r] = np.sum(total_prob_subj_log)
                 
                 idx_max, r_max = np.unravel_index(np.argmax(possible_likelihood, axis=None), possible_likelihood.shape)
-                max_likelihood = possible_likelihood[idx_max, r_max]
+                # max_likelihood = possible_likelihood[idx_max, r_max]
                 this_S = possible_sequences[idx_max, :, r_max].astype(int)
                 shape_S = possible_shapes[idx_max, :, r_max]
                 S_opt[s] = self._dictionarize_sequence(this_S, shape_S)
-                p_perm_k[:,:,s] = possible_p_perm_k[:,:,idx_max, r_max]
+                p_perm_k_log[:,:,s] = possible_p_perm_k_log[:,:,idx_max, r_max]
             
             S_opt[s] = self._dictionarize_sequence(this_S, shape_S)
 
-        p_perm_k_weighted                   = p_perm_k * f_val_mat
-        p_perm_k_norm                       = p_perm_k_weighted / np.tile(np.sum(np.sum(p_perm_k_weighted, 1), 1).reshape(M, 1, 1), (1, N + 1, N_S))  # the second summation axis is different to Matlab version
+        # p_perm_k_weighted                   = p_perm_k * f_val_mat
+        p_perm_k_weighted_log               = p_perm_k_log + np.log(f_val_mat)
+        # p_perm_k_norm                       = p_perm_k_weighted_log - np.tile(np.sum(np.sum(p_perm_k_weighted, 1), 1).reshape(M, 1, 1), (1, N + 1, N_S))  # the second summation axis is different to Matlab version
+        p_perm_k_norm_log                   = p_perm_k_weighted_log - logsumexp(p_perm_k_weighted_log, axis=(1, 2), keepdims=True)
+        p_perm_k_norm                       = np.exp(p_perm_k_norm_log)
         f_opt                               = (np.squeeze(sum(sum(p_perm_k_norm))) / sum(sum(sum(p_perm_k_norm)))).reshape(N_S, 1, 1)
 
         f_val_mat                           = np.tile(f_opt, (1, N + 1, M))
         f_val_mat                           = np.transpose(f_val_mat, (2, 1, 0))
 
         f_opt                               = f_opt.reshape(N_S)
-        total_prob_stage                    = np.sum(p_perm_k * f_val_mat, 2)
-        total_prob_subj                     = np.sum(total_prob_stage, 1)
+        # total_prob_stage_log                = np.sum(p_perm_k * f_val_mat, 2)
+        # total_prob_subj                     = np.sum(total_prob_stage, 1)
+        likelihood_opt                      = np.sum(logsumexp(p_perm_k_log + np.log(f_val_mat), axis=(1,2), keepdims=True))
 
-        likelihood_opt                      = np.sum(np.log(total_prob_subj + 1e-250))
+        # likelihood_opt                      = np.sum(np.log(total_prob_subj + 1e-250))
 
         return S_opt, f_opt, likelihood_opt
 
@@ -430,20 +435,20 @@ class sEBMSustain(AbstractSustain):
             #f                               = samples_f[:, i]
             #likelihood_sample, _, _, _, _   = self._calculate_likelihood(sustainData, S, f)
 
-            p_perm_k                        = np.zeros((M, N+1, N_S))
+            p_perm_k_log                        = np.zeros((M, N+1, N_S))
             for s in range(N_S):
                 S_dict = self._dictionarize_sequence(S[s,:], shape_S[s])
-                p_perm_k[:,:,s]             = self._calculate_likelihood_stage(sustainData, S_dict, shape_S[s].tolist())
+                p_perm_k_log[:,:,s]             = self._calculate_likelihood_stage(sustainData, S_dict, shape_S[s].tolist())
 
 
             #NOTE: added extra axes to get np.tile to work the same as Matlab's repmat in this 3D tiling
             f_val_mat                       = np.tile(samples_f[:,i, np.newaxis, np.newaxis], (1, N+1, M))
             f_val_mat                       = np.transpose(f_val_mat, (2, 1, 0))
 
-            total_prob_stage                = np.sum(p_perm_k * f_val_mat, 2)
-            total_prob_subj                 = np.sum(total_prob_stage, 1)
+            total_prob_stage_log                = logsumexp(p_perm_k_log + np.log(f_val_mat), axis=2)
+            total_prob_subj_log                 = np.sum(total_prob_stage_log, 1)
 
-            likelihood_sample               = np.sum(np.log(total_prob_subj + 1e-250))
+            likelihood_sample               = np.sum(total_prob_subj_log)
 
             samples_likelihood[i]           = likelihood_sample
 
@@ -478,7 +483,7 @@ class sEBMSustain(AbstractSustain):
             shape = [len(S_dict[_]) for _ in range(N_stages)]
             return shape
         shape_S = np.vstack([_get_shape(_) for _ in ml_sequence_EM])
-        print("shape_S", shape_S)
+        # print("shape_S", shape_S)
         N_S = samples_sequence.shape[0]
         # Get the number of features/biomarkers
         N_bio = samples_sequence.shape[1]
@@ -522,7 +527,7 @@ class sEBMSustain(AbstractSustain):
             biomarker_colours = {i:"black" for i in biomarker_labels}
 
         # Flag to plot subtypes separately
-        print("separate subtypes", separate_subtypes)
+        # print("separate subtypes", separate_subtypes)
         if separate_subtypes:
             nrows, ncols = 1, 1
         else:
@@ -545,7 +550,7 @@ class sEBMSustain(AbstractSustain):
         # Container for all figure objects
         figs = []
         # Loop over figures (only makes a diff if separate_subtypes=True)
-        print("subtype_loops", subtype_loops)
+        # print("subtype_loops", subtype_loops)
         for i in range(subtype_loops):
             # Create the figure and axis for this subtype loop
             fig, axs = plt.subplots(nrows, ncols, figsize=figsize)
@@ -564,7 +569,7 @@ class sEBMSustain(AbstractSustain):
                 if i not in range(N_S):
                     ax.set_axis_off()
                     continue
-                print("III", i)
+                # print("III", i)
                 this_shape = shape_S[subtype_order[i]]
                 shape_cumsum = np.cumsum(this_shape)
                 shape_cumsum = np.insert(shape_cumsum,0,0)
@@ -579,10 +584,10 @@ class sEBMSustain(AbstractSustain):
                 confus_matrix_cluster = np.zeros((confus_matrix.shape[0], len(this_shape)))
                 for _ in range(shape_cumsum.shape[0] -1):
                     confus_matrix_cluster[:,_] = confus_matrix[:,shape_cumsum[_]:shape_cumsum[_+1]].sum(axis=1)
-                print("Confusion Matrix shape", confus_matrix.shape)
-                print(confus_matrix)
-                print("Confusion Matrix cluster")
-                print(confus_matrix_cluster)
+                # print("Confusion Matrix shape", confus_matrix.shape)
+                # print(confus_matrix)
+                # print("Confusion Matrix cluster")
+                # print(confus_matrix_cluster)
 
                 if subtype_titles is not None:
                     title_i = subtype_titles[i]
@@ -611,25 +616,31 @@ class sEBMSustain(AbstractSustain):
                     cmap=cmap,
                     vmin=0,
                     vmax=1,
-                    aspect=0.25
+                    aspect=0.3
                 )
                 # Add the xticks and labels
                 stage_ticks = np.arange(0, this_shape.shape[0], stage_interval)
                 ax.set_xticks(stage_ticks)
-                ax.set_xticklabels(stage_ticks+1, fontsize=stage_font_size, rotation=stage_rot)
+                ax.set_xticklabels(stage_ticks+1, fontsize=stage_font_size+5, rotation=stage_rot)
                 # Add the yticks and labels
                 ax.set_yticks(np.arange(N_bio))
                 # Add biomarker labels to LHS of every row
                 # if (i % ncols) == 0:
-                ax.set_yticklabels(biomarker_labels, ha='right', fontsize=label_font_size - 4, rotation=label_rot)
+                ax.set_yticklabels(biomarker_labels, ha='right', fontsize=label_font_size, rotation=label_rot)
                 # Set biomarker label colours
-                for tick_label in ax.get_yticklabels():
-                    tick_label.set_color(biomarker_colours[tick_label.get_text()])
+                for t_idx, tick_label in enumerate(ax.get_yticklabels()):
+                    clr_idx = np.argmax(t_idx < shape_cumsum)
+                    if clr_idx % 2 == 0:
+                        clr = "r"
+                    else:
+                        clr = "k"
+                    # tick_label.set_color(biomarker_colours[tick_label.get_text()])
+                    tick_label.set_color(clr)
                 # else:
                 #     ax.set_yticklabels([])
                 # Make the event label slightly bigger than the ticks
-                ax.set_xlabel(stage_label, fontsize=stage_font_size+2)
-                ax.set_title(title_i, fontsize=title_font_size)
+                ax.set_xlabel(stage_label, fontsize=stage_font_size+8)
+                ax.set_title(title_i, fontsize=title_font_size+8)
             # Tighten up the figure
             fig.tight_layout()
             # Save if a path is given
@@ -648,7 +659,7 @@ class sEBMSustain(AbstractSustain):
                     file_format = "png"
                 # Save the figure, with additional kwargs
                 fig.savefig(
-                    f"{save_name}.{file_format}",
+                    f"{save_name}.{file_format}", dpi=300,
                     **save_kwargs
                 )
         return figs, axs
@@ -864,7 +875,7 @@ class sEBMSustain(AbstractSustain):
                                                                                               ml_f_prev_EM) #self.__estimate_ml_sustain_model_nplus1_clusters(self.__data, ml_sequence_prev_EM, ml_f_prev_EM)
 
                 seq_init                    = ml_sequence_EM
-                print("SEQ INIT", seq_init)
+                # print("SEQ INIT", seq_init)
                 f_init                      = ml_f_EM
 
                 ml_sequence,        \
@@ -935,6 +946,7 @@ class sEBMSustain(AbstractSustain):
                     subtype_order=self._plot_subtype_order,
                     biomarker_order=self._plot_biomarker_order,
                     save_path=Path(self.output_folder) / f"{self.dataset_name}_subtype{s}_PVD.{plot_format}",
+                    figsize=(16,16),
                     **kwargs
                 )
                 for fig in figs:
@@ -946,7 +958,7 @@ class sEBMSustain(AbstractSustain):
         if plot:
             ax0.legend(loc='upper right')
             fig0.tight_layout()
-            fig0.savefig(Path(self.output_folder) / f"MCMC_likelihoods.{plot_format}", bbox_inches='tight')
+            fig0.savefig(Path(self.output_folder) / f"MCMC_likelihoods.{plot_format}", bbox_inches='tight', dpi=300)
             fig0.show()
 
         return samples_sequence, samples_f, ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype_stage
