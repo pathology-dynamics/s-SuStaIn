@@ -27,10 +27,10 @@ import sklearn.model_selection
 
 import pylab
 
-N                       = 45         # number of biomarkers
+N                       = 25         # number of biomarkers
 M                       = 400       # number of observations ( e.g. subjects )
 N_S_ground_truth        = 3         # number of ground truth subtypes
-stage_sizes = [9,9,9,9,9]
+stage_sizes = [5]*5
 # the fractions of the total number of subjects (M) belonging to each subtype
 ground_truth_fractions = np.array([0.6, 0.30, 0.10])
 
@@ -58,7 +58,8 @@ sustainType             = 'mixture_GMM'
 
 
 dataset_name            = 'simx'
-output_folder           = os.path.join(os.getcwd(), dataset_name + '_' + sustainType)
+output_dir              = '/home/rtandon32/ebm/s-SuStain-outputs'
+output_folder           = os.path.join(output_dir, dataset_name + '_' + sustainType)
 if not os.path.isdir(output_folder):
     os.mkdir(output_folder)
 
@@ -104,7 +105,14 @@ for i in range(N):
     elif sustainType   == "mixture_KDE":
         L_no[:, i], L_yes[:, i] = mixtures[i].pdf(data[:, i].reshape(-1, 1))
 
-sustain = sEBMSustain(L_yes, L_no, 5, stage_sizes, 5, 0.4, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
+rep=10
+N_iterations_MCMC_init=1e4
+n_stages = 5
+min_clust_size = 3
+p_absorb = 0.3
+N_iterations_MCMC       = int(1e5)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
+
+sustain = sEBMSustain(L_yes, L_no, n_stages, stage_sizes, min_clust_size, p_absorb, rep, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC_init,N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
 
 samples_sequence, samples_f, ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype_stage = sustain.run_sustain_algorithm(plot=True)
 print(samples_sequence, samples_f)

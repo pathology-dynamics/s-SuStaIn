@@ -305,11 +305,12 @@ class AbstractSustain(ABC):
                     samples_likelihood      = loaded_variables["samples_likelihood"]
                     samples_sequence        = loaded_variables["samples_sequence"]
                     samples_f               = loaded_variables["samples_f"]
+                    shape_seq               = loaded_variables["shape_seq"]
 
                     mean_likelihood_subj_test = loaded_variables["mean_likelihood_subj_test"]
                     pickle_file.close()
 
-                    samples_likelihood_subj_test = self._evaluate_likelihood_setofsamples(sustainData_test, samples_sequence, samples_f)
+                    samples_likelihood_subj_test = self._evaluate_likelihood_setofsamples(sustainData_test, shape_seq, samples_sequence, samples_f)
 
                 else:
                     ml_sequence_EM,         \
@@ -328,10 +329,15 @@ class AbstractSustain(ABC):
                     samples_sequence,       \
                     samples_f,              \
                     samples_likelihood           = self._estimate_uncertainty_sustain_model(sustainData_train, seq_init, f_init)
+                    
+                    shape_seq = np.vstack([self._get_shape(_) for _ in seq_init])
 
-                    samples_likelihood_subj_test = self._evaluate_likelihood_setofsamples(sustainData_test, samples_sequence, samples_f)
+                    samples_likelihood_subj_test = self._evaluate_likelihood_setofsamples(sustainData_test, shape_seq, samples_sequence, samples_f)
+                    # samples_likelihood_subj_test = np.exp(samples_likelihood_subj_test)
+                    
+                    mean_likelihood_subj_test = np.exp(logsumexp(samples_likelihood_subj_test, axis=1)) / samples_likelihood_subj_test.shape[1]
 
-                    mean_likelihood_subj_test    = np.mean(samples_likelihood_subj_test,axis=1)
+                    # mean_likelihood_subj_test    = np.mean(samples_likelihood_subj_test,axis=1)
 
                     ml_sequence_prev_EM         = ml_sequence_EM
                     ml_f_prev_EM                = ml_f_EM
@@ -347,13 +353,14 @@ class AbstractSustain(ABC):
                     save_variables["samples_likelihood"]                = samples_likelihood
 
                     save_variables["mean_likelihood_subj_test"]         = mean_likelihood_subj_test
+                    save_variables["shape_seq"]                         = shape_seq
 
                     pickle_file                     = open(pickle_filename_fold_s, 'wb')
                     pickle_output                   = pickle.dump(save_variables, pickle_file)
                     pickle_file.close()
 
                 if is_full:
-                    loglike_matrix[fold, s]         = np.mean(np.sum(np.log(samples_likelihood_subj_test + 1e-250),axis=0))
+                    loglike_matrix[fold, s]         = np.mean(np.sum(np.log(samples_likelihood_subj_test),axis=0))
 
         if not is_full:
             print("Cannot calculate CVIC and loglike_matrix without all folds. Rerun cross_validate_sustain_model after all folds calculated.")
@@ -1025,7 +1032,7 @@ class AbstractSustain(ABC):
     def _optimise_mcmc_settings(self, sustainData, seq_init, f_init):
 
         # Optimise the perturbation size for the MCMC algorithm
-        n_iterations_MCMC_optimisation      = int(1e4)  # FIXME: set externally
+        n_iterations_MCMC_optimisation      = int(self.N_iterations_MCMC_init)  # FIXME: set externally
 
         n_passes_optimisation               = 3
 
@@ -1052,14 +1059,14 @@ class AbstractSustain(ABC):
                 for sample in range(n_iterations_MCMC_optimisation):
                     temp_seq                        = samples_sequence_currentpass[s, :, sample]
                     temp_inv                        = np.array([0] * samples_sequence_currentpass.shape[1])
-                    temp_inv[temp_seq.astype(int)]  = np.arange(samples_sequence_currentpass.shape[1])
                     temp_inv[temp_seq.astype(int)]  = [loc_i for loc_i, size in enumerate(shape_S[s]) for _ in range(size)]
                     # [loc_i for loc_i, size in enumerate(current_shape) for _ in range(size)]
                     samples_position_currentpass[s, :, sample] = temp_inv
 
             seq_sigma_currentpass           = np.std(samples_position_currentpass, axis=2, ddof=1)  # np.std is different to Matlab std, which normalises to N-1 by default
-            print("seq sigma currentpass", seq_sigma_currentpass)
-            seq_sigma_currentpass[seq_sigma_currentpass < 0.01] = 0.01  # magic number
+            # print("seq sigma currentpass", seq_sigma_currentpass)
+            seq_sigma_currentpass[seq_sigma_currentpass < 1.0] = 1.0  # magic number
+            # seq_sigma_currentpass[seq_sigma_currentpass < 0.01] = 0.01  # magic number
 
             f_sigma_currentpass             = np.std(samples_f_currentpass, axis=1, ddof=1)         # np.std is different to Matlab std, which normalises to N-1 by default
 
@@ -1068,7 +1075,7 @@ class AbstractSustain(ABC):
 
         return seq_sigma_opt, f_sigma_opt
 
-    def _evaluate_likelihood_setofsamples(self, sustainData, samples_sequence, samples_f):
+    def _evaluate_likelihood_setofsamples(self, sustainData, shape_seq, samples_sequence, samples_f):
     
         n_total                             = samples_sequence.shape[2]
     
@@ -1091,8 +1098,9 @@ class AbstractSustain(ABC):
         for i in range(n_iterations):
             S                               = samples_sequence[:, :, i]
             f                               = samples_f[:, i]
+            this_S_dict                     = [self._dictionarize_sequence(S[i_], shape) for i_, shape in enumerate(shape_seq)]
 
-            _, likelihood_sample_subj, _, _, _  = self._calculate_likelihood(sustainData, S, f)
+            _, likelihood_sample_subj, _, _, _  = self._calculate_likelihood(sustainData, this_S_dict, f)
 
             samples_likelihood_subj[:, i]   = likelihood_sample_subj
 

@@ -75,9 +75,11 @@ class sEBMSustain(AbstractSustain):
                  stage_size_init, 
                  min_stage_size,
                  p_absorb,
+                 rep_opt,
                  biomarker_labels,
                  N_startpoints,
                  N_S_max,
+                 N_iterations_MCMC_init,
                  N_iterations_MCMC,
                  output_folder,
                  dataset_name,
@@ -107,6 +109,8 @@ class sEBMSustain(AbstractSustain):
         self.stage_size_init            = stage_size_init
         self.min_stage_size             = min_stage_size
         self.p_absorb                   = p_absorb
+        self.rep_opt                    = rep_opt
+        self.N_iterations_MCMC_init     = N_iterations_MCMC_init
         assert self.n_stages == len(stage_size_init), "number of stages should match with the number of elements in stage_size_init"
         assert min(self.stage_size_init) >= self.min_stage_size, "no stage should have fewer biomarkers than what are required by min_stage_size"
         assert self.p_absorb < 1 and self.p_absorb >= 0, "the probability should be less than 1, but can include 0"
@@ -254,7 +258,7 @@ class sEBMSustain(AbstractSustain):
         f_val_mat                           = np.tile(f_opt, (1, N + 1, M))
         f_val_mat                           = np.transpose(f_val_mat, (2, 1, 0))
         order_seq                           = rng.permutation(N_S)    #np.random.permutation(N_S)  # this will produce different random numbers to Matlab
-        rep = 20
+        rep = self.rep_opt
 
         for s in order_seq:
             order_bio                       = rng.permutation(N_b) #np.random.permutation(N)  # this will produce different random numbers to Matlab
@@ -416,11 +420,11 @@ class sEBMSustain(AbstractSustain):
 
                 
 
-                r = current_sequence.shape[0]
+                # r = current_sequence.shape[0]
                 # Don't need to copy, but doing it for clarity
                 new_seq = current_sequence.copy()
-                new_seq[np.arange(r), move_event_from_idx] = new_seq[np.arange(r), move_event_to_idx]
-                new_seq[np.arange(r), move_event_to_idx] = selected_event
+                new_seq[np.arange(N_S), move_event_from_idx] = new_seq[np.arange(N_S), move_event_to_idx]
+                new_seq[np.arange(N_S), move_event_to_idx] = selected_event
 
                 samples_sequence[:, :, i] = new_seq
 
@@ -445,8 +449,8 @@ class sEBMSustain(AbstractSustain):
             f_val_mat                       = np.tile(samples_f[:,i, np.newaxis, np.newaxis], (1, N+1, M))
             f_val_mat                       = np.transpose(f_val_mat, (2, 1, 0))
 
-            total_prob_stage_log                = logsumexp(p_perm_k_log + np.log(f_val_mat), axis=2)
-            total_prob_subj_log                 = np.sum(total_prob_stage_log, 1)
+            total_prob_stage_log            = logsumexp(p_perm_k_log + np.log(f_val_mat), axis=2)
+            total_prob_subj_log             = logsumexp(total_prob_stage_log, 1)
 
             likelihood_sample               = np.sum(total_prob_subj_log)
 
@@ -551,6 +555,7 @@ class sEBMSustain(AbstractSustain):
         figs = []
         # Loop over figures (only makes a diff if separate_subtypes=True)
         # print("subtype_loops", subtype_loops)
+        text_cmap = plt.cm.get_cmap("Dark2", shape_S.shape[1])
         for i in range(subtype_loops):
             # Create the figure and axis for this subtype loop
             fig, axs = plt.subplots(nrows, ncols, figsize=figsize)
@@ -616,24 +621,25 @@ class sEBMSustain(AbstractSustain):
                     cmap=cmap,
                     vmin=0,
                     vmax=1,
-                    aspect=0.3
+                    aspect=0.4
                 )
                 # Add the xticks and labels
                 stage_ticks = np.arange(0, this_shape.shape[0], stage_interval)
                 ax.set_xticks(stage_ticks)
-                ax.set_xticklabels(stage_ticks+1, fontsize=stage_font_size+5, rotation=stage_rot)
+                ax.set_xticklabels(stage_ticks+1, fontsize=stage_font_size+10, rotation=stage_rot)
                 # Add the yticks and labels
                 ax.set_yticks(np.arange(N_bio))
                 # Add biomarker labels to LHS of every row
                 # if (i % ncols) == 0:
-                ax.set_yticklabels(biomarker_labels, ha='right', fontsize=label_font_size, rotation=label_rot)
+                ax.set_yticklabels(biomarker_labels, ha='right', fontsize=label_font_size+3, rotation=label_rot)
                 # Set biomarker label colours
                 for t_idx, tick_label in enumerate(ax.get_yticklabels()):
                     clr_idx = np.argmax(t_idx < shape_cumsum)
-                    if clr_idx % 2 == 0:
-                        clr = "r"
-                    else:
-                        clr = "k"
+                    clr = text_cmap(clr_idx-1)
+                    # if clr_idx % 2 == 0:
+                    #     clr = "r"
+                    # else:
+                    #     clr = "k"
                     # tick_label.set_color(biomarker_colours[tick_label.get_text()])
                     tick_label.set_color(clr)
                 # else:
@@ -664,13 +670,15 @@ class sEBMSustain(AbstractSustain):
                 )
         return figs, axs
 
-    def subtype_and_stage_individuals_newData(self, L_yes_new, L_no_new, samples_sequence, samples_f, N_samples):
+    def subtype_and_stage_individuals_newData(self, L_yes_new, L_no_new, num_stages, samples_sequence, samples_f, N_samples):
 
-        numStages_new                   = L_yes_new.shape[1]    #number of stages == number of biomarkers here
+        # numStages_new                   = L_yes_new.shape[1]    #number of stages == number of biomarkers here
 
-        assert numStages_new == self.__sustainData.getNumStages(), "Number of stages in new data should be same as in training data"
+        # assert numStages_new == self.__sustainData.getNumStages(), "Number of stages in new data should be same as in training data"
 
-        sustainData_newData             = MixtureSustainData(L_yes_new, L_no_new, numStages_new)
+        # sustainData_newData             = MixtureSustainData(L_yes_new, L_no_new, numStages_new)
+        sustainData_newData               = sEBMSustainData(L_yes_new, L_no_new, num_stages)
+        print(N_samples)
 
         ml_subtype,         \
         prob_ml_subtype,    \
@@ -678,7 +686,7 @@ class sEBMSustain(AbstractSustain):
         prob_ml_stage,      \
         prob_subtype,       \
         prob_stage,         \
-        prob_subtype_stage          = self.subtype_and_stage_individuals(sustainData_newData, samples_sequence, samples_f, N_samples)
+        prob_subtype_stage          = self.subtype_and_stage_individuals(sustainData_newData, samples_sequence, samples_f, 100)
 
         return ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype, prob_stage, prob_subtype_stage
 
@@ -919,6 +927,7 @@ class sEBMSustain(AbstractSustain):
                 save_variables["ml_sequence_prev_EM"]   = ml_sequence_prev_EM
                 save_variables["ml_f_EM"]               = ml_f_EM
                 save_variables["ml_f_prev_EM"]          = ml_f_prev_EM
+                save_variables["shape_seq"]             = shape_S
 
                 pickle_file                 = open(pickle_filename_s, 'wb')
                 pickle_output               = pickle.dump(save_variables, pickle_file)

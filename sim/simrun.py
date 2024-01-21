@@ -75,7 +75,7 @@ def main():
     assert sustainType in ("mixture_GMM", "mixture_KDE", "zscore"), "sustainType should be either mixture_GMM, mixture_KDE or zscore"
 
     #****************** generate the ground-truth sequences and groud-truth data (i.e. subjects' biomarker measures)
-    dataset_name            = 'sim'
+    dataset_name            = 'sim_cross_valid'
     output_folder           = os.path.join(os.getcwd(), dataset_name + '_' + sustainType)
     if not os.path.isdir(output_folder):
         os.mkdir(output_folder)
