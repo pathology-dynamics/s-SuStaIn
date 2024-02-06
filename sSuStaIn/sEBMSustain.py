@@ -26,7 +26,6 @@ import os
 import multiprocessing
 from functools import partial, partialmethod
 
-import time
 import pathos
 import warnings
 from tqdm.auto import tqdm
@@ -34,6 +33,7 @@ import numpy as np
 import scipy.stats as stats
 from matplotlib import pyplot as plt
 from scipy.special import logsumexp
+import time
 
 from sSuStaIn.AbstractSustain import AbstractSustainData
 from sSuStaIn.AbstractSustain import AbstractSustain
@@ -81,6 +81,7 @@ class sEBMSustain(AbstractSustain):
                  N_S_max,
                  N_iterations_MCMC_init,
                  N_iterations_MCMC,
+                 N_em,
                  output_folder,
                  dataset_name,
                  use_parallel_startpoints,
@@ -111,6 +112,7 @@ class sEBMSustain(AbstractSustain):
         self.p_absorb                   = p_absorb
         self.rep_opt                    = rep_opt
         self.N_iterations_MCMC_init     = N_iterations_MCMC_init
+        self.N_em                       = N_em
         assert self.n_stages == len(stage_size_init), "number of stages should match with the number of elements in stage_size_init"
         assert min(self.stage_size_init) >= self.min_stage_size, "no stage should have fewer biomarkers than what are required by min_stage_size"
         assert self.p_absorb < 1 and self.p_absorb >= 0, "the probability should be less than 1, but can include 0"
@@ -260,6 +262,7 @@ class sEBMSustain(AbstractSustain):
         order_seq                           = rng.permutation(N_S)    #np.random.permutation(N_S)  # this will produce different random numbers to Matlab
         rep = self.rep_opt
 
+        start_time = time.time()
         for s in order_seq:
             order_bio                       = rng.permutation(N_b) #np.random.permutation(N)  # this will produce different random numbers to Matlab
             for i in order_bio:
@@ -334,6 +337,8 @@ class sEBMSustain(AbstractSustain):
                 p_perm_k_log[:,:,s] = possible_p_perm_k_log[:,:,idx_max, r_max]
             
             S_opt[s] = self._dictionarize_sequence(this_S, shape_S)
+        end_time = time.time()
+        opt_time = end_time - start_time
 
         # p_perm_k_weighted                   = p_perm_k * f_val_mat
         p_perm_k_weighted_log               = p_perm_k_log + np.log(f_val_mat)
@@ -686,7 +691,7 @@ class sEBMSustain(AbstractSustain):
         prob_ml_stage,      \
         prob_subtype,       \
         prob_stage,         \
-        prob_subtype_stage          = self.subtype_and_stage_individuals(sustainData_newData, samples_sequence, samples_f, 100)
+        prob_subtype_stage,_          = self.subtype_and_stage_individuals(sustainData_newData, samples_sequence, samples_f, 100)
 
         return ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype, prob_stage, prob_subtype_stage
 
@@ -879,7 +884,7 @@ class sEBMSustain(AbstractSustain):
                 ml_likelihood_EM,   \
                 ml_sequence_mat_EM, \
                 ml_f_mat_EM,        \
-                ml_likelihood_mat_EM        = self._estimate_ml_sustain_model_nplus1_clusters(self.__sustainData, ml_sequence_prev_EM, 
+                ml_likelihood_mat_EM, opt_time  = self._estimate_ml_sustain_model_nplus1_clusters(self.__sustainData, ml_sequence_prev_EM, 
                                                                                               ml_f_prev_EM) #self.__estimate_ml_sustain_model_nplus1_clusters(self.__data, ml_sequence_prev_EM, ml_f_prev_EM)
 
                 seq_init                    = ml_sequence_EM
@@ -891,7 +896,7 @@ class sEBMSustain(AbstractSustain):
                 ml_likelihood,      \
                 samples_sequence,   \
                 samples_f,          \
-                samples_likelihood          = self._estimate_uncertainty_sustain_model(self.__sustainData, seq_init, f_init)           #self.__estimate_uncertainty_sustain_model(self.__data, seq_init, f_init)
+                samples_likelihood, mcmc_time          = self._estimate_uncertainty_sustain_model(self.__sustainData, seq_init, f_init)           #self.__estimate_uncertainty_sustain_model(self.__data, seq_init, f_init)
                 ml_sequence_prev_EM         = ml_sequence_EM
                 ml_f_prev_EM                = ml_f_EM
 
@@ -904,7 +909,7 @@ class sEBMSustain(AbstractSustain):
             prob_ml_stage,          \
             prob_subtype,           \
             prob_stage,             \
-            prob_subtype_stage               = self.subtype_and_stage_individuals(self.__sustainData, shape_S, samples_sequence, samples_f, N_samples)   #self.subtype_and_stage_individuals(self.__data, samples_sequence, samples_f, N_samples)
+            prob_subtype_stage, ll               = self.subtype_and_stage_individuals(self.__sustainData, shape_S, samples_sequence, samples_f, N_samples)   #self.subtype_and_stage_individuals(self.__data, samples_sequence, samples_f, N_samples)
             if not pickle_filepath.exists():
 
                 if not os.path.exists(self.output_folder):
@@ -928,6 +933,7 @@ class sEBMSustain(AbstractSustain):
                 save_variables["ml_f_EM"]               = ml_f_EM
                 save_variables["ml_f_prev_EM"]          = ml_f_prev_EM
                 save_variables["shape_seq"]             = shape_S
+                save_variables["run_times"]             = [opt_time, mcmc_time]
 
                 pickle_file                 = open(pickle_filename_s, 'wb')
                 pickle_output               = pickle.dump(save_variables, pickle_file)

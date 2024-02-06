@@ -21,7 +21,8 @@ import numpy.ma as ma
 
 
 read_dir = "/home/rtandon32/ebm/s-SuStain-outputs/simulation_experiments/complex/input_data"
-write_dir = "/home/rtandon32/ebm/s-SuStain-outputs/simulation_experiments/complex/output"
+# write_dir = "/home/rtandon32/ebm/s-SuStain-outputs/simulation_experiments/complex/output"
+write_dir = "/home/rtandon32/ebm/s-SuStain-outputs/simulation_experiments/complex/output_runtime"
 
 def get_read_path(n_sample, dim, seed, nc, root_path=read_dir):
     read_path = os.path.join(root_path, "{}_samples".format(n_sample), "{}_dims".format(dim),
@@ -65,7 +66,7 @@ def run_SuStaIn(run_path):
     L_yes = process_L(L_yes)
     
     # s-SuStaIn Params
-    rep=10
+    rep=1
     n_stages = 5
     assert dim % n_stages == 0
     stage_sizes = [dim // n_stages] * n_stages
@@ -75,8 +76,9 @@ def run_SuStaIn(run_path):
 
     # MCMC params
     N_iterations_MCMC_init=1e4
-    N_iterations_MCMC = int(1e5)
-    N_startpoints = 10
+    N_iterations_MCMC = int(1e3)
+    N_startpoints = 1
+    N_em = 100
     N_S_max = nc
     use_parallel_startpoints = False
 
@@ -87,17 +89,17 @@ def run_SuStaIn(run_path):
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder)
 
-    sustain = sEBMSustain(L_yes, L_no, n_stages, stage_sizes, min_clust_size, p_absorb, rep, SuStaInLabels, N_startpoints, N_S_max,                   N_iterations_MCMC_init,N_iterations_MCMC, output_folder, dataset_name, use_parallel_startpoints)
+    sustain = sEBMSustain(L_yes, L_no, n_stages, stage_sizes, min_clust_size, p_absorb, rep, SuStaInLabels, N_startpoints, N_S_max, N_iterations_MCMC_init,N_iterations_MCMC, N_em, output_folder, dataset_name, use_parallel_startpoints)
     samples_sequence, samples_f, ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype_stage = sustain.run_sustain_algorithm(plot=True)
 
 
 if __name__ == "__main__":
-    samples = [200, 400, 600]
+    samples = [200]
     samples = np.array(samples).astype(int)
     dims = [50, 100, 150, 200, 250, 300]
     dims = np.array(dims).astype(int)
-    seeds = list(range(6))
-    n_components = [2,3,4]
+    seeds = list(range(3))
+    n_components = [4]
 
     run_objects = []
     for n_sample in samples:
@@ -107,4 +109,4 @@ if __name__ == "__main__":
                     path = get_read_path(n_sample, n_dim, s, nc, read_dir)
                     run_objects.append(path)
 
-    Parallel(n_jobs=min(20, len(run_objects)))(delayed(run_SuStaIn)(obj) for obj in run_objects)
+    Parallel(n_jobs=min(18, len(run_objects)))(delayed(run_SuStaIn)(obj) for obj in run_objects)

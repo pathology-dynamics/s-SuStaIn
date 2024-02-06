@@ -1,3 +1,8 @@
+"""
+This script compares the normalized-KT between the ground-truth sequence and inferred sequence.
+Inferred sequence is derived from either a) s-SuStaIn, and b) SuStaIn.
+"""
+
 import os
 import pickle
 import pandas as pd
@@ -7,6 +12,7 @@ import matplotlib.pyplot as plt
 import itertools
 from math import comb
 import seaborn as sns
+import pdb
 
 samples = [200, 400, 600]
 dims = [50, 100, 150, 200, 250, 300]
@@ -99,18 +105,6 @@ def get_output_seq(pkl_obj, sustain_type):
     idx = fraction.argsort()[::-1]
     if sustain_type == "sEBM":
         shape = pkl_obj["shape_seq"]
-        seq = np.array([_flatten_S_dict(s) for s in seq])
-        shape = shape[idx]
-    seq = seq.astype(int)
-    return seq[idx], fraction[idx], shape
-
-def get_output_seq(pkl_obj, sustain_type):
-    seq = pkl_obj["ml_sequence_EM"]
-    fraction = pkl_obj["ml_f_EM"]
-    shape = None
-    idx = fraction.argsort()[::-1]
-    if sustain_type == "sEBM":
-        shape = pkl_obj["shape_seq"]
         shape = shape[idx]
         seq = np.array([_flatten_S_dict(s) for s in seq])
     seq = seq.astype(int)
@@ -151,9 +145,9 @@ def get_metrics(n_sample, n_dim, n_comp, rep):
     return metrics
 
 n_samples = [200]
-n_dims = [200]
+n_dims = [50, 100, 150, 200]
 n_comps = [2, 3, 4]
-reps = list(range(6))
+reps = list(range(5))
 
 exp_results = []
 for n_s in n_samples:
@@ -165,40 +159,61 @@ for n_s in n_samples:
                 row = np.hstack([obs, metrics])
                 exp_results.append(row)
 
-cols = ["N_s", "N_dims", "N_comps", "seed", "KT_sEBM", "KT_classic", "KT_classic2", "entropy_sEBM", "entropy_classic", "KL_sEBM", "KL_classic"]
+cols = ["N_s", "biomarkers (N)", "sub-types", "seed", "KT_sEBM", "KT_classic", "KT_classic2", "entropy_sEBM", "entropy_classic", "KL_sEBM", "KL_classic"]
 exp_results_df = pd.DataFrame(np.vstack(exp_results), columns=cols)
-df_kt = pd.melt(exp_results_df[["N_s", "N_dims", "N_comps", "seed", "KT_sEBM", "KT_classic"]],
+exp_results_df[["sub-types", "biomarkers (N)"]] = exp_results_df[["sub-types", "biomarkers (N)"]].astype(int)
+df_kt = pd.melt(exp_results_df[["N_s", "biomarkers (N)", "sub-types", "seed", "KT_sEBM", "KT_classic"]],
                     value_vars=["KT_sEBM", "KT_classic"],
-                    id_vars=["N_s", "N_dims", "N_comps", "seed"],
+                    id_vars=["N_s", "biomarkers (N)", "sub-types", "seed"],
                     var_name = "SuStaIn type",
                     value_name = "KT")
 
-df_entropy = pd.melt(exp_results_df[["N_s", "N_dims", "N_comps", "seed", "entropy_sEBM", "entropy_classic"]],
+df_kt["SuStaIn type"] = df_kt["SuStaIn type"].map({"KT_sEBM":"s-SuStaIn", "KT_classic":"SuStaIn"})
+
+
+df_entropy = pd.melt(exp_results_df[["N_s", "biomarkers (N)", "sub-types", "seed", "entropy_sEBM", "entropy_classic"]],
                     value_vars=["entropy_sEBM", "entropy_classic"],
-                    id_vars=["N_s", "N_dims", "N_comps", "seed"],
+                    id_vars=["N_s", "biomarkers (N)", "sub-types", "seed"],
                     var_name = "SuStaIn type",
                     value_name = "cross-entropy")
+df_entropy["SuStaIn type"] = df_entropy["SuStaIn type"].map({"entropy_sEBM":"s-SuStaIn", "entropy_classic":"SuStaIn"})
 
-df_KL = pd.melt(exp_results_df[["N_s", "N_dims", "N_comps", "seed", "KL_sEBM", "KL_classic"]],
-                    value_vars=["KL_sEBM", "KL_classic"],
-                    id_vars=["N_s", "N_dims", "N_comps", "seed"],
-                    var_name = "SuStaIn type",
-                    value_name = "KL")
 
 # fig, ax = plt.subplot(figsize=(5,5))
-barplot_kt = sns.barplot(df_kt, x="N_comps", y="KT", hue="SuStaIn type", errorbar="sd")
-fig1 = barplot_kt.get_figure()
-fig1.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/KT.png", dpi=300, transparent=True)
+
+barplot_kt = sns.catplot(df_kt, kind="bar",
+    x="sub-types", y="KT", col="biomarkers (N)", hue="SuStaIn type", errorbar="se",
+    height=2, aspect=1, linewidth=0.5, edgecolor="k", legend_out=True)
+barplot_kt.set_ylabels(r"Kendall's $\tau$",fontsize=12)
+barplot_kt.set_xlabels("sub-types (T)",fontsize=10)
+barplot_kt._legend.set_title(None)
+sns.move_legend(barplot_kt, "upper center", bbox_to_anchor=(0.5,0.12),ncol=2)
+barplot_kt.figure.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/KT.png", dpi=300, transparent=True)
 plt.close()
 
-barplot_H = sns.barplot(df_entropy, x="N_comps", y="cross-entropy", hue="SuStaIn type", errorbar="sd")
-fig2 = barplot_H.get_figure()
-fig2.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/H.png", dpi=300, transparent=True)
+# barplot_kt = sns.barplot(df_kt, x="N_comps", y="KT", hue="SuStaIn type", errorbar="sd")
+# fig1 = barplot_kt.get_figure()
+# fig1.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/KT.png", dpi=300, transparent=True)
+
+barplot_H = sns.catplot(df_entropy, kind="bar",
+    x="sub-types", y="cross-entropy", col="biomarkers (N)", hue="SuStaIn type", errorbar="se",
+    height=2, aspect=1, linewidth=0.5, edgecolor="k", legend_out=True)
+barplot_H.set_ylabels(r"cross-entropy",fontsize=12)
+barplot_H.set_xlabels("sub-types (T)",fontsize=10)
+barplot_H._legend.set_title(None)
+sns.move_legend(barplot_H, "upper center", bbox_to_anchor=(0.5,0.12),ncol=2)
+barplot_H.figure.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/H.png", dpi=300, transparent=True)
 plt.close()
 
-barplot_H = sns.barplot(df_KL, x="N_comps", y="KL", hue="SuStaIn type", errorbar="sd")
-fig3 = barplot_H.get_figure()
-ax = fig3.get_axes()
-ax[0].set_ylim([0,0.1])
-fig3.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/KL.png", dpi=300, transparent=True)
-plt.close()
+
+# barplot_H = sns.barplot(df_entropy, x="N_comps", y="cross-entropy", hue="SuStaIn type", errorbar="sd")
+# fig2 = barplot_H.get_figure()
+# fig2.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/H.png", dpi=300, transparent=True)
+# plt.close()
+
+# barplot_H = sns.barplot(df_KL, x="N_comps", y="KL", hue="SuStaIn type", errorbar="sd")
+# fig3 = barplot_H.get_figure()
+# ax = fig3.get_axes()
+# ax[0].set_ylim([0,0.1])
+# fig3.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/KL.png", dpi=300, transparent=True)
+# plt.close()

@@ -184,7 +184,7 @@ class AbstractSustain(ABC):
             prob_ml_stage,          \
             prob_subtype,           \
             prob_stage,             \
-            prob_subtype_stage               = self.subtype_and_stage_individuals(self.__sustainData, samples_sequence, samples_f, N_samples)   #self.subtype_and_stage_individuals(self.__data, samples_sequence, samples_f, N_samples)
+            prob_subtype_stage, _               = self.subtype_and_stage_individuals(self.__sustainData, samples_sequence, samples_f, N_samples)   #self.subtype_and_stage_individuals(self.__data, samples_sequence, samples_f, N_samples)
             if not pickle_filepath.exists():
 
                 if not os.path.exists(self.output_folder):
@@ -549,6 +549,7 @@ class AbstractSustain(ABC):
         prob_subtype_stage                  = np.zeros((nSamples, nStages + 1, N_S))
         prob_subtype                        = np.zeros((nSamples, N_S))
         prob_stage                          = np.zeros((nSamples, nStages + 1))
+        ll_list = []
 
         for i in range(N_samples):
             sample                          = int(select_samples[i])
@@ -560,7 +561,7 @@ class AbstractSustain(ABC):
             this_S_dict                     = [self._dictionarize_sequence(this_S[i_], S_) for i_, S_ in enumerate(shape_seq)]
             this_f                          = samples_f[ix, sample]
 
-            _,                  \
+            ll,                  \
             _,                  \
             total_prob_stage_log,   \
             total_prob_subtype_log, \
@@ -579,6 +580,7 @@ class AbstractSustain(ABC):
             prob_subtype_stage              = (i / (i + 1.) * prob_subtype_stage)   + (1. / (i + 1.) * total_prob_subtype_stage_norm)
             prob_subtype                    = (i / (i + 1.) * prob_subtype)         + (1. / (i + 1.) * total_prob_subtype_norm)
             prob_stage                      = (i / (i + 1.) * prob_stage)           + (1. / (i + 1.) * total_prob_stage_norm)
+            ll_list.append(ll)
 
         ml_subtype                          = np.nan * np.ones((nSamples, 1))
         prob_ml_subtype                     = np.nan * np.ones((nSamples, 1))
@@ -615,7 +617,7 @@ class AbstractSustain(ABC):
         # May need to do some masking to avoid NaNs, or use `np.nanargmax` depending on preference
         # E.g. ml_subtype == prob_subtype.argmax(1)
         # E.g. ml_stage == prob_subtype_stage[np.arange(prob_subtype_stage.shape[0]), :, ml_subtype].argmax(1)
-        return ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype, prob_stage, prob_subtype_stage
+        return ml_subtype, prob_ml_subtype, ml_stage, prob_ml_stage, prob_subtype, prob_stage, prob_subtype_stage, ll_list
 
     # ********************* PROTECTED METHODS
     def _estimate_ml_sustain_model_nplus1_clusters(self, sustainData, ml_sequence_prev, ml_f_prev):
@@ -634,17 +636,20 @@ class AbstractSustain(ABC):
             # print("Stage Shape", sustainData.L_no.shape)
             # If the number of subtypes is 1, fit a single linear z-score model
             print('Finding ML solution to 1 cluster problem')
+            start_time = time.time()
             ml_sequence,        \
             ml_f,               \
             ml_likelihood,      \
             ml_sequence_mat,    \
             ml_f_mat,           \
-            ml_likelihood_mat               = self._find_ml(sustainData)
+            ml_likelihood_mat   = self._find_ml(sustainData)
+            end_time = time.time()
             print('Overall ML likelihood is', ml_likelihood)
 
         else:
             # If the number of subtypes is greater than 1, go through each subtype
             # in turn and try splitting into two subtypes
+            start_time = time.time()
             _, _, _, p_sequence_log, _          = self._calculate_likelihood(sustainData, ml_sequence_prev, ml_f_prev)
 
             # ml_sequence_prev                = ml_sequence_prev.reshape(ml_sequence_prev.shape[0], ml_sequence_prev.shape[1])
@@ -716,8 +721,10 @@ class AbstractSustain(ABC):
                 else:
                     print(f'Cluster {ix_cluster_split + 1} of {N_S - 1} too small for subdivision')
             print(f'Overall ML likelihood is', ml_likelihood)
+            end_time = time.time()
+        run_time = end_time - start_time
 
-        return ml_sequence, ml_f, ml_likelihood, ml_sequence_mat, ml_f_mat, ml_likelihood_mat
+        return ml_sequence, ml_f, ml_likelihood, ml_sequence_mat, ml_f_mat, ml_likelihood_mat, run_time
 
     #********************************************
 
@@ -770,7 +777,7 @@ class AbstractSustain(ABC):
         _,                  \
         _,                  \
         _,                  \
-        _                        = self._perform_em(sustainData, seq_init, f_init, rng)
+        _   = self._perform_em(sustainData, seq_init, f_init, rng)
 
         return this_ml_sequence, this_ml_f, this_ml_likelihood
 
@@ -841,7 +848,7 @@ class AbstractSustain(ABC):
             temp_sustainData                = sustainData.reindex(index_s)
 
             temp_seq_init                   = self._initialise_sequence(sustainData, rng)
-            seq_init_split, _, _, _, _, _, _   = self._perform_em(temp_sustainData, temp_seq_init, [1], rng)
+            seq_init_split, _, _, _, _, _, _  = self._perform_em(temp_sustainData, temp_seq_init, [1], rng)
             seq_init.append(seq_init_split[0])
 
         f_init                              = np.array([1.] * N_S) / float(N_S)
@@ -849,7 +856,7 @@ class AbstractSustain(ABC):
         # optimise the mixture of two models from the initialisation
         this_ml_sequence, \
         this_ml_f, \
-        this_ml_likelihood, _, _, _, _         = self._perform_em(sustainData, seq_init, f_init, rng)
+        this_ml_likelihood, _, _, _, _    = self._perform_em(sustainData, seq_init, f_init, rng)
 
         return this_ml_sequence, this_ml_f, this_ml_likelihood
 
@@ -903,7 +910,8 @@ class AbstractSustain(ABC):
         ml_likelihood,      \
         samples_sequence,   \
         samples_f,          \
-        samples_likelihood, samples_shapes                  = self._perform_em(sustainData, seq_init, f_init, rng)
+        samples_likelihood, \
+        samples_shapes           = self._perform_em(sustainData, seq_init, f_init, rng)
 
         return ml_sequence, ml_f, ml_likelihood, samples_sequence, samples_f, samples_likelihood, samples_shapes
     #********************************************
@@ -911,7 +919,7 @@ class AbstractSustain(ABC):
     def _perform_em(self, sustainData, current_sequence, current_f, rng):
 
         # Perform an E-M procedure to estimate parameters of SuStaIn model
-        MaxIter                             = 100
+        MaxIter                             = self.N_em
 
         N                                   = sustainData.getNumStages()    #self.stage_zscore.shape[1]
         N_b                                 = sustainData.getNumBiomarkers()
@@ -1017,17 +1025,21 @@ class AbstractSustain(ABC):
         # samples_likeilhood - samples of the likelihood of each SuStaIn model sampled by the MCMC sampling
 
         # Perform a few initial passes where the perturbation sizes of the MCMC uncertainty estimation are tuned
+        start_time = time.time()
         seq_sigma_opt, f_sigma_opt          = self._optimise_mcmc_settings(sustainData, seq_init, f_init)
 
         # Run the full MCMC algorithm to estimate the uncertainty
+        
         ml_sequence,        \
         ml_f,               \
         ml_likelihood,      \
         samples_sequence,   \
         samples_f,          \
         samples_likelihood                  = self._perform_mcmc(sustainData, seq_init, f_init, self.N_iterations_MCMC, seq_sigma_opt, f_sigma_opt)
+        end_time = time.time()
+        mcmc_time = end_time - start_time
 
-        return ml_sequence, ml_f, ml_likelihood, samples_sequence, samples_f, samples_likelihood
+        return ml_sequence, ml_f, ml_likelihood, samples_sequence, samples_f, samples_likelihood, mcmc_time
 
     def _optimise_mcmc_settings(self, sustainData, seq_init, f_init):
 
