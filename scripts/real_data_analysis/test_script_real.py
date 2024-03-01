@@ -18,7 +18,7 @@ path = "/home/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/dfMri_D
 df = pd.read_csv(path)
 
 
-k=119
+k=10
 # select_cols = [_ for _ in range(k) if _ not in exclude_idx]
 data = df.iloc[:,:k].values
 bm_names = df.columns.tolist()
@@ -50,20 +50,20 @@ L_yes = process_L(L_yes)
 
 
 
-stage_sizes = [25,25,25,25,19]
+stage_sizes = [2,2,2,2,2]
 N_startpoints           = 50
-N_S_max                 = 4
+N_S_max                 = 1
 SuStaInLabels = df.columns[:k].tolist()
-rep = 20
-N_iterations_MCMC_init = int(2e4)
-N_iterations_MCMC       = int(3e6)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
+rep = 3
+N_iterations_MCMC_init = int(2e3)
+N_iterations_MCMC       = int(3e3)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
 n_stages = 5
-min_clust_size = 10
+min_clust_size = 2
 p_absorb = 0.4
 N_em = 100
 
 
-dataset_name            = 'sim_tadpole10'
+dataset_name            = 'sim_tadpole13'
 output_dir              = '/home/rtandon32/ebm/s-SuStain-outputs'
 output_folder           = os.path.join(output_dir, dataset_name + '_' + sustainType)
 if not os.path.isdir(output_folder):
