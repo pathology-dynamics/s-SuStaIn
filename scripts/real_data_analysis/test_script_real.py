@@ -19,11 +19,12 @@ df = pd.read_csv(path)
 
 
 k=119
-exclude_idx = [21,  71,  22,  19, 111,  64,  96,  44,  90,  50,  80,  57,   9,
-        77,  33, 113,  76,  98, 105,  79,  41,   4,  87, 107, 114,  20,
-         2, 110,  84,  23,  58,   1,  60,  56,  10,  94,  49,  74,   0,
-        92,  91,  18,  61,  43,  45, 108,  78, 118,  62,   8,   5,  46,
-         3,  47,  48,  53,  42, 112,  73]
+# exclude_idx = [21,  71,  22,  19, 111,  64,  96,  44,  90,  50,  80,  57,   9,
+#         77,  33, 113,  76,  98, 105,  79,  41,   4,  87, 107, 114,  20,
+#          2, 110,  84,  23,  58,   1,  60,  56,  10,  94,  49,  74,   0,
+#         92,  91,  18,  61,  43,  45, 108,  78, 118,  62,   8,   5,  46,
+#          3,  47,  48,  53,  42, 112,  73]
+exclude_idx = []
 
 select_cols = [_ for _ in range(k) if _ not in exclude_idx]
 data = df.iloc[:,select_cols]
@@ -59,7 +60,7 @@ L_yes = process_L(L_yes)
 
 
 
-stage_sizes = [12,12,12,12,12]
+stage_sizes = [24,24,24,24,23]
 N_startpoints           = 40
 N_S_max                 = 1
 SuStaInLabels = bm_names
@@ -67,12 +68,12 @@ rep = 3
 N_iterations_MCMC_init = int(2e3)
 N_iterations_MCMC       = int(3e3)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
 n_stages = 5
-min_clust_size = 12
-p_absorb = 0.0
+min_clust_size = 10
+p_absorb = 0.3
 N_em = 100
 
 
-dataset_name            = 'sim_tadpole14'
+dataset_name            = 'sim_tadpole15'
 output_dir              = '/home/rtandon32/ebm/s-SuStain-outputs'
 output_folder           = os.path.join(output_dir, dataset_name + '_' + sustainType)
 if not os.path.isdir(output_folder):
