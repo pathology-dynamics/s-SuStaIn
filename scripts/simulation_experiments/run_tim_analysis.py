@@ -67,6 +67,7 @@ for s_t in sustain_types:
             df_list.append(mini_df)
 
 y = pd.concat(df_list, axis=0)
+y.to_csv("/nethome/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/y.csv", index=False)
 gb_mean = y.groupby(["sustain-type", "N_dim", "N_components"]).mean()["opt-time"]
 gb_sem = y.groupby(["sustain-type", "N_dim", "N_components"]).sem()["opt-time"]
 
@@ -92,6 +93,24 @@ ax[0].set_ylabel("Opt. time (s)", fontsize=11)
 
 fig.tight_layout()
 fig.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/run_time.png", transparent=True, dpi=300)
+
+fig, ax = plt.subplots(1,1,figsize=(3,3))
+assert gb_mean["sEBM"].index.equals(gb_mean["classic"].index)
+r = gb_mean["classic"] / gb_mean["sEBM"]
+r_df = r.unstack()
+markers = {1:"o", 2:"s", 3:"P"}
+for _ in range(1,4):
+    ax.plot(r_df[_].index.tolist(), r_df[_], 
+            label="{} {}".format(_+1, "subtypes"), marker=markers[_])
+ax.legend(framealpha=0.3)
+ax.set_xlabel("biomarkers (N)")
+ax.set_ylabel(r'Speed up factor ($\frac{T_{SuStaIn}}{T_{s-SuStaIn}}$)')
+ax.set_xticks(r_df[_].index.tolist())
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+
+fig.tight_layout()
+fig.savefig("/home/rtandon32/ebm/s-SuStain-outputs/data_dump/figures/run_time_factor2.png", transparent=True, dpi=300)
 
 print(clr_dict)
 # print(exp_results_df)
