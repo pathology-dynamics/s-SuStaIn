@@ -14,19 +14,50 @@ from kde_ebm import plotting
 from sSuStaIn.sEBMSustain import sEBMSustain
 import numpy.ma as ma
 
-path = "/home/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/dfMri_D12_ebm_final_n327.csv"
+# path = "/home/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/dfMri_D12_ebm_final_n327.csv"
+# df = pd.read_csv(path)
+
+path = "/nethome/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/TADPOLE_all_aligned/df_all_first_cnad_no_5ventricle.csv"
 df = pd.read_csv(path)
 
 
-k=119
-exclude_idx = [21,  71,  22,  19, 111,  64,  96,  44,  90,  50,  80,  57,   9,
-        77,  33, 113,  76,  98, 105,  79,  41,   4,  87, 107, 114,  20,
-         2, 110,  84,  23,  58,   1,  60,  56,  10,  94,  49,  74,   0,
-        92,  91,  18,  61,  43,  45, 108,  78, 118,  62,   8,   5,  46,
-         3,  47,  48,  53,  42, 112,  73]
-# exclude_idx = []
+# key_regions = ["hippocampus", "parahippocampal", "entorhinal", "amygdala", "cingulate", "frontal", "occipital", "ventricle"] run_20
+# key_regions = ["hippocampus", "parahippocampal", "entorhinal", "amygdala", "cingulate", "frontal", "occipital", "ventricle", "temporal", "insula"]
+key_regions = ["hippocampus", "parahippocampal", "entorhinal", "amygdala", "cingulate", 
+               "frontal", "occipital", "ventricle", "temporal", "fusiform"]
+def get_selected_cols(cols, key_regions):
+    region_dict = {}
+    region_names = {}
+    cols_include = []
+    for region in key_regions:
+        region_dict[region] = [_ for _, col in enumerate(cols) if region in col.lower()]
+        region_names[region] = [col for _, col in enumerate(cols) if region in col.lower()]
+        cols_include += region_dict[region]
+    return region_dict, region_names, list(set(cols_include))
 
-select_cols = [_ for _ in range(k) if _ not in exclude_idx]
+def get_pval_based_cols(cols, p_val):
+    path_mwu = "/nethome/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/TADPOLE_all_aligned/pval_cnad_mannwhitneyu.csv"
+    pval_df = pd.read_csv(path_mwu)
+    pval_df.sort_values("p-val", inplace=True)
+    pval_df_thresh = pval_df[pval_df["p-val"] < p_val]
+    selected_cols = pval_df_thresh["region"].tolist()
+    cols_idx = [_ for _, col in enumerate(cols) if col in selected_cols]
+    cols_idx.sort()
+    return cols_idx
+
+# exclude_idx = [21,  71,  22,  19, 111,  64,  96,  44,  90,  50,  80,  57,   9,
+#         77,  33, 113,  76,  98, 105,  79,  41,   4,  87, 107, 114,  20,
+#          2, 110,  84,  23,  58,   1,  60,  56,  10,  94,  49,  74,   0,
+#         92,  91,  18,  61,  43,  45, 108,  78, 118,  62,   8,   5,  46,
+#          3,  47,  48,  53,  42, 112,  73]
+# exclude_idx = []
+k=118
+cols = df.columns[:k].tolist()
+# region_dict, region_names, select_cols = get_selected_cols(cols, key_regions)
+# select_cols.sort()
+# select_cols = get_pval_based_cols(cols, (1e-14)/118)
+select_cols = list(range(k))
+
 data = df.iloc[:,select_cols]
 bm_names = data.columns.tolist()
 data = data.values
@@ -42,12 +73,18 @@ elif sustainType == "mixture_KDE":
 L_yes                   = np.zeros(data.shape)
 L_no                    = np.zeros(data.shape)
 
-# for i in range(k):
+
 for i in range(len(select_cols)):
     if sustainType == "mixture_GMM":
-        L_no[:, i], L_yes[:, i] = mixtures[i].pdf(None, data[:, i])
+        L_no[:, i], L_yes[:, i] = mixtures[i].pdfs_mixture_components(data[:, i], None)
     elif sustainType   == "mixture_KDE":
         L_no[:, i], L_yes[:, i] = mixtures[i].pdf(data[:, i].reshape(-1, 1))
+
+# for i in range(k):
+#     if sustainType == "mixture_GMM":
+#         L_no[:, i], L_yes[:, i] = mixtures[i].pdfs_mixture_components(data[:, i], None)
+#     elif sustainType   == "mixture_KDE":
+#         L_no[:, i], L_yes[:, i] = mixtures[i].pdf(data[:, i].reshape(-1, 1))
 
 def process_L(L, min_val=0):
     mx = ma.masked_less_equal(L,min_val)
@@ -60,20 +97,21 @@ L_yes = process_L(L_yes)
 
 
 
-stage_sizes = [12,12,12,12,12]
+stage_sizes = [24,23,24,23,24]
+# stage_sizes = [12,12,13,12,12]
 N_startpoints           = 40
-N_S_max                 = 1
+N_S_max                 = 4
 SuStaInLabels = bm_names
 rep = 20
-N_iterations_MCMC_init = int(2e3)
-N_iterations_MCMC       = int(3e3)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
+N_iterations_MCMC_init = int(2e4)
+N_iterations_MCMC       = int(2e6)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
 n_stages = 5
-min_clust_size = 5
-p_absorb = 0.4
+min_clust_size = 16
+p_absorb = 0.3
 N_em = 100
 
 
-dataset_name            = 'sim_tadpole16'
+dataset_name            = 'sim_tadpole32'
 output_dir              = '/home/rtandon32/ebm/s-SuStain-outputs'
 output_folder           = os.path.join(output_dir, dataset_name + '_' + sustainType)
 if not os.path.isdir(output_folder):
