@@ -17,7 +17,7 @@ import numpy.ma as ma
 # path = "/home/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/dfMri_D12_ebm_final_n327.csv"
 # df = pd.read_csv(path)
 
-path = "/nethome/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/TADPOLE_all_aligned/df_all_first_cnad_no_5ventricle.csv"
+path = "/nethome/rtandon32/ebm/ebm_experiments/experiment_scripts/real_data/TADPOLE_all_aligned/df_all_first_cnad_no_5ventricle_adj.csv"
 df = pd.read_csv(path)
 
 
@@ -106,12 +106,12 @@ rep = 20
 N_iterations_MCMC_init = int(2e4)
 N_iterations_MCMC       = int(2e6)  #Generally recommend either 1e5 or 1e6 (the latter may be slow though) in practice
 n_stages = 5
-min_clust_size = 16
+min_clust_size = 8
 p_absorb = 0.3
 N_em = 100
 
 
-dataset_name            = 'sim_tadpole32'
+dataset_name            = 'sim_tadpole33'
 output_dir              = '/home/rtandon32/ebm/s-SuStain-outputs'
 output_folder           = os.path.join(output_dir, dataset_name + '_' + sustainType)
 if not os.path.isdir(output_folder):
